@@ -49,6 +49,18 @@ h1 {
   letter-spacing: 0;
 }
 
+.deploy-marker {
+  display: inline-block;
+  margin: 8px 0 0;
+  padding: 3px 8px;
+  border: 1px solid #b94700;
+  border-radius: 999px;
+  color: #7a2f00;
+  background: #fff1df;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 main {
   width: min(1480px, 100%);
   margin: 0 auto;
