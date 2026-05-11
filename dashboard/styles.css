@@ -253,14 +253,18 @@ select:focus {
   text-transform: uppercase;
 }
 
-.heat-meter {
+.market-row .heat-meter {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
+  min-height: 8px;
+  width: 100%;
 }
 
-.heat-segment {
+.market-row .heat-segment {
+  display: block;
   height: 8px;
+  min-height: 8px;
   border-radius: 999px;
   background: #e3e9ec;
 }
