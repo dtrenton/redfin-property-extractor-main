@@ -387,8 +387,19 @@ function marketHeat(property) {
     flames,
     label: labels[flames],
     className: `market-heat-${flames}`,
-    text: labels[flames],
   };
+}
+
+function renderMarketHeat(heat, engagement) {
+  const segments = [1, 2, 3, 4].map((level) => (
+    `<span class="heat-segment ${level <= heat.flames ? "active" : ""}"></span>`
+  )).join("");
+  return `
+    <span class="market-heat ${heat.className}" title="${escapeHtml(`${heat.label}. ${engagement}`)}" aria-label="${escapeHtml(heat.label)}">
+      <small>Market Heat</small>
+      <span class="heat-meter">${segments}</span>
+    </span>
+  `;
 }
 
 function priceReductionText(property) {
@@ -789,7 +800,7 @@ function createCard(property) {
     </div>
 
     <div class="market-row">
-      <span class="market-heat ${heat.className}" title="${escapeHtml(buyerEngagement(property))}" aria-label="${escapeHtml(heat.label)}">Market Heat: ${escapeHtml(heat.text)}</span>
+      ${renderMarketHeat(heat, buyerEngagement(property))}
       <span class="market-metric">Views: ${displayNumber(property.views)}</span>
       <span class="market-metric">Favorites: ${displayNumber(property.favorites)}</span>
       <span class="market-metric">DOM: ${escapeHtml(compactDomDisplay(property))}</span>
