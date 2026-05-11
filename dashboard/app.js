@@ -259,6 +259,14 @@ function lotDisplay(property) {
   return "—";
 }
 
+function compactAddress(address) {
+  if (!hasDisplayValue(address)) return "Unknown address";
+  const street = String(address).split(",")[0].trim();
+  const parts = street.split(/\s+/).filter(Boolean);
+  if (parts.length <= 3) return street;
+  return parts.slice(0, 3).join(" ");
+}
+
 function listingDateDisplay(property) {
   if (hasDisplayValue(property.date_added)) return property.date_added;
   if (hasDisplayValue(property.listing_date)) return property.listing_date;
@@ -643,7 +651,7 @@ function createCard(property) {
   card.innerHTML = `
     <div class="card-main-row">
       <div class="title-block">
-        <h2 class="address">${escapeHtml(property.address || "Unknown address")}</h2>
+        <h2 class="address" title="${escapeHtml(property.address || "Unknown address")}">${escapeHtml(compactAddress(property.address))}</h2>
         <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
       </div>
       <div class="primary-metrics">
