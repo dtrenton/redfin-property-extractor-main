@@ -10,6 +10,7 @@ INPUT_FILE = "outputs/scored_property.json"
 
 HEADERS = [
     "address",
+    "listing_status",
     "price",
     "sq_ft",
     "price_per_sqft",
@@ -307,6 +308,9 @@ def value_for_header(data, header):
     }
 
     value = data.get(header)
+    if header == "listing_status" and is_missing_export_value(value):
+        value = "For Sale"
+
     if header == "garage_fit" and is_missing_export_value(value):
         value = garage_fit_value(data)
 

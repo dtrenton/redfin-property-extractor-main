@@ -2,6 +2,7 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqJIzYh_rVeZm
 
 const sheetHeaders = [
   "address",
+  "listing_status",
   "price",
   "sq_ft",
   "price_per_sqft",
@@ -50,31 +51,10 @@ const sheetHeaders = [
 
 const detailSections = [
   {
-    title: "Core Metrics",
-    fields: [
-      "address",
-      "price",
-      "sq_ft",
-      "price_per_sqft",
-      "beds",
-      "baths",
-      "year_built",
-      "acres",
-      "date_added",
-      "listing_url",
-      "image_folder",
-    ],
-  },
-  {
     title: "Market Activity",
     fields: [
-      "days_on_redfin",
-      "dom_status",
-      "views",
-      "favorites",
       "views_per_day",
       "favorites_per_day",
-      "interest_velocity",
       "favorite_conversion_rate",
       "buyer_interest_signal",
       "listed_count_1y",
@@ -91,19 +71,14 @@ const detailSections = [
       "water_source",
       "heating",
       "cooling",
-      "flooring",
-      "fence",
     ],
   },
   {
     title: "Garage & Basement",
     fields: [
-      "garage",
       "garage_fit",
-      "garage_type",
       "garage_spaces",
       "garage_amenities",
-      "basement",
       "finished_basement_pct",
     ],
   },
@@ -124,8 +99,46 @@ const detailSections = [
       "urgency_score",
       "buyer_leverage_score",
       "property_risk_score",
+      "property_risk_flags",
+      "buyer_leverage_flags",
+      "urgency_flags",
+      "strategy_fit_flags",
+      "notes",
     ],
   },
+  {
+    title: "Source & Files",
+    fields: [
+      "source_pdf",
+      "image_folder",
+      "listing_url",
+    ],
+  },
+];
+
+const cardDisplayFields = [
+  "address",
+  "listing_status",
+  "price",
+  "price_per_sqft",
+  "beds",
+  "baths",
+  "sq_ft",
+  "acres",
+  "lot_size",
+  "lot_size_square_feet",
+  "date_added",
+  "listing_date",
+  "days_on_redfin",
+  "dom_status",
+  "views",
+  "favorites",
+  "interest_velocity",
+  "garage",
+  "garage_type",
+  "basement",
+  "fence",
+  "flooring",
 ];
 
 let properties = [];
@@ -139,13 +152,6 @@ const elements = {
   garageFit: document.querySelector("#garage-fit-filter"),
   sort: document.querySelector("#sort-select"),
   sortDirection: document.querySelector("#sort-direction"),
-  metricCompetitive: document.querySelector("#metric-competitive"),
-  metricLeverage: document.querySelector("#metric-leverage"),
-  metricWatch: document.querySelector("#metric-watch"),
-  metricPass: document.querySelector("#metric-pass"),
-  metricManual: document.querySelector("#metric-manual"),
-  metricNoGarage: document.querySelector("#metric-no-garage"),
-  metricPps: document.querySelector("#metric-pps"),
   modal: document.querySelector("#details-modal"),
   modalTitle: document.querySelector("#details-title"),
   modalContent: document.querySelector("#details-content"),
@@ -215,7 +221,143 @@ function hasDisplayValue(value) {
     || value === ""
     || value === "-"
     || value === "MISSING"
+    || value === "Not Provided"
+    || value === "No Info"
   );
+}
+
+function displayValue(value) {
+  return hasDisplayValue(value) ? String(value) : "—";
+}
+
+function displayCurrency(value) {
+  const formatted = formatCurrency(value);
+  return formatted === "-" ? "—" : formatted;
+}
+
+function displayNumber(value, digits = 0) {
+  const formatted = formatNumber(value, digits);
+  return formatted === "-" ? "—" : formatted;
+}
+
+function displayPricePerSqft(value) {
+  const number = parseNumber(value);
+  return number === null ? "—" : `$${formatNumber(number, 0)}`;
+}
+
+function compactDate(value) {
+  if (!hasDisplayValue(value)) return "";
+  const parsed = parseDateValue(value);
+  if (parsed === null) return String(value);
+  return new Intl.DateTimeFormat("en-CA").format(new Date(parsed));
+}
+
+function lotDisplay(property) {
+  if (hasDisplayValue(property.acres)) return `${displayValue(property.acres)} ac`;
+  if (hasDisplayValue(property.lot_size)) return displayValue(property.lot_size);
+  if (hasDisplayValue(property.lot_size_square_feet)) return `${displayNumber(property.lot_size_square_feet)} sf lot`;
+  return "—";
+}
+
+function listingDateDisplay(property) {
+  if (hasDisplayValue(property.date_added)) return property.date_added;
+  if (hasDisplayValue(property.listing_date)) return property.listing_date;
+  return "—";
+}
+
+function bedroomsBathsDisplay(property) {
+  return `${displayValue(property.beds)} bd / ${displayValue(property.baths)} ba`;
+}
+
+function basementDisplay(value) {
+  const normalized = normalizeText(value);
+  if (!hasDisplayValue(value)) return "—";
+  if (
+    normalized === "no"
+    || normalized === "none"
+    || normalized === "no basement"
+    || normalized === "does not apply"
+  ) {
+    return "No";
+  }
+  return "Yes";
+}
+
+function statusClass(status) {
+  const normalized = normalizeText(status || "For Sale").replace(/\s+/g, "-");
+  if (normalized.includes("sold")) return "status-sold";
+  if (normalized.includes("pending")) return "status-pending";
+  return "status-for-sale";
+}
+
+function listingStatusDisplay(status) {
+  const normalized = normalizeText(status);
+  if (normalized.includes("sold")) return "Sold";
+  if (normalized.includes("pending")) return "Pending";
+  return "For Sale";
+}
+
+function urgencyInfo(property) {
+  const score = parseNumber(property.urgency_score);
+  const text = normalizeText(property.urgency_score);
+  if (score !== null) {
+    if (score <= 4) {
+      if (score >= 4) return { className: "urgency-red", label: "Act quickly" };
+      if (score >= 3) return { className: "urgency-orange", label: "Elevated urgency" };
+      if (score >= 2) return { className: "urgency-yellow", label: "Moderate urgency" };
+      return { className: "urgency-green", label: "Low urgency / watch" };
+    }
+    if (score >= 75) return { className: "urgency-red", label: "Act quickly" };
+    if (score >= 50) return { className: "urgency-orange", label: "Elevated urgency" };
+    if (score >= 25) return { className: "urgency-yellow", label: "Moderate urgency" };
+    return { className: "urgency-green", label: "Low urgency / watch" };
+  }
+  if (text.includes("high") || text.includes("act")) return { className: "urgency-red", label: "Act quickly" };
+  if (text.includes("elevated")) return { className: "urgency-orange", label: "Elevated urgency" };
+  if (text.includes("moderate")) return { className: "urgency-yellow", label: "Moderate urgency" };
+  return { className: "urgency-green", label: "Low urgency / watch" };
+}
+
+function buyerEngagement(property) {
+  if (hasDisplayValue(property.buyer_interest_signal)) return property.buyer_interest_signal;
+  if (hasDisplayValue(property.interest_velocity)) return `${property.interest_velocity} interest`;
+  const views = parseNumber(property.views);
+  if (views === null) return "Buyer interest unclear";
+  if (views >= 100) return "High buyer engagement";
+  if (views >= 40) return "Moderate buyer engagement";
+  return "Low buyer engagement";
+}
+
+function domDisplay(property) {
+  if (hasDisplayValue(property.days_on_redfin)) return `${property.days_on_redfin} DOM`;
+  if (hasDisplayValue(property.dom_status)) return property.dom_status;
+  return "—";
+}
+
+function priceReductionText(property) {
+  const count = parseNumber(property.price_change_count_1y);
+  const hasReductionData = hasDisplayValue(property.price_reduction_pct)
+    || hasDisplayValue(property.price_reduction_date)
+    || hasDisplayValue(property.price_reduction_amount)
+    || (count !== null && count > 0);
+  if (!hasReductionData) return "";
+
+  const parts = [];
+  if (hasDisplayValue(property.price_reduction_pct)) parts.push(displayValue(property.price_reduction_pct));
+  if (hasDisplayValue(property.price_reduction_amount) && !parts.length) parts.push(displayValue(property.price_reduction_amount));
+
+  const date = compactDate(property.price_reduction_date);
+  let text = "↓ Price drop";
+  if (parts.length) text += `: ${parts.join(" ")}`;
+  if (date) text += ` on ${date}`;
+  if (!parts.length && !date && count !== null && count > 0) text += `: ${count} change${count === 1 ? "" : "s"} in 1y`;
+  return text;
+}
+
+function sortChipValue(property) {
+  const field = elements.sort.value;
+  const value = field === "garage_fit" ? getGarageFit(property) : property[field];
+  return `Sorted by: ${columnLabel(field)} = ${displayValue(value)}`;
 }
 
 function parseCsv(text) {
@@ -283,20 +425,6 @@ function getGarageFit(property) {
   return "Garage Unknown";
 }
 
-function strategyClass(strategy) {
-  const text = normalizeText(strategy);
-  if (text === "competitive target") return "competitive";
-  if (text === "leverage opportunity") return "leverage";
-  if (text === "leverage opportunity - no garage") return "leverage-no-garage";
-  if (text === "watch - no garage") return "watch-no-garage";
-  if (text === "pass - no garage") return "pass-no-garage";
-  if (text.includes("pass")) return "pass";
-  if (text.includes("manual") || text.includes("insufficient")) return "manual";
-  if (text.includes("watch")) return "watch";
-  if (text.includes("leverage")) return "leverage";
-  return "competitive";
-}
-
 function populateSelect(select, values) {
   for (const value of values) {
     const option = document.createElement("option");
@@ -326,7 +454,7 @@ function populateSortOptions(data = []) {
     option.textContent = columnLabel(header);
     elements.sort.append(option);
   }
-  elements.sort.value = "strategy_category";
+  elements.sort.value = "price";
 }
 
 function getFilteredProperties() {
@@ -423,26 +551,8 @@ function sortableValue(property, column) {
   return { empty: false, type: "text", value: raw };
 }
 
-function updateSummary(filtered) {
+function updateCount(filtered) {
   elements.count.textContent = `${filtered.length} ${filtered.length === 1 ? "property" : "properties"}`;
-  elements.metricCompetitive.textContent = filtered.filter((item) => item.strategy_category === "Competitive Target").length;
-  elements.metricLeverage.textContent = filtered.filter((item) => normalizeText(item.strategy_category).includes("leverage opportunity")).length;
-  elements.metricWatch.textContent = filtered.filter((item) => normalizeText(item.strategy_category).includes("watch")).length;
-  elements.metricPass.textContent = filtered.filter((item) => normalizeText(item.strategy_category).includes("pass")).length;
-  elements.metricManual.textContent = filtered.filter((item) => item.strategy_category === "Manual Review").length;
-  elements.metricNoGarage.textContent = filtered.filter((item) => (
-    item.strategy_category === "Leverage Opportunity - No Garage"
-    || item.strategy_category === "Watch - No Garage"
-  )).length;
-
-  const ppsValues = filtered.map((item) => parseNumber(item.price_per_sqft)).filter((value) => value !== null).sort((a, b) => a - b);
-  if (!ppsValues.length) {
-    elements.metricPps.textContent = "-";
-    return;
-  }
-  const middle = Math.floor(ppsValues.length / 2);
-  const median = ppsValues.length % 2 ? ppsValues[middle] : (ppsValues[middle - 1] + ppsValues[middle]) / 2;
-  elements.metricPps.textContent = `$${formatNumber(median, 0)}`;
 }
 
 function renderCards(data) {
@@ -493,7 +603,7 @@ function renderDetailValue(field, value) {
 }
 
 function openDetails(property) {
-  const usedFields = new Set();
+  const usedFields = new Set(cardDisplayFields);
   const sectionPairs = detailSections.map((section) => {
     const pairs = detailFieldsForSection(property, section, usedFields);
     return { ...section, pairs };
@@ -503,9 +613,7 @@ function openDetails(property) {
     .filter((field) => !usedFields.has(field) && hasDisplayValue(property[field]))
     .sort()
     .map((field) => [field, property[field]]);
-  if (extraPairs.length) {
-    sectionPairs[0].pairs = [...sectionPairs[0].pairs, ...extraPairs];
-  }
+  if (extraPairs.length) sectionPairs.push({ title: "Other Fields", pairs: extraPairs });
 
   elements.modalTitle.textContent = property.address || "Property";
   elements.modalContent.innerHTML = sectionPairs
@@ -525,44 +633,51 @@ function createCard(property) {
   const card = document.createElement("article");
   card.className = "property-card";
 
-  const strategy = property.strategy_category || "Watch";
-  const decision = property.final_decision || "Watch";
-  const garageFit = getGarageFit(property);
-  const listingLink = property.listing_url
-    ? `<a class="open-link" href="${property.listing_url}" target="_blank" rel="noopener">Open listing</a>`
-    : "";
+  const listingStatus = listingStatusDisplay(property.listing_status);
+  const urgency = urgencyInfo(property);
+  const priceDrop = priceReductionText(property);
+  const listingLink = hasDisplayValue(property.listing_url)
+    ? `<a class="open-link" href="${escapeHtml(property.listing_url)}" target="_blank" rel="noopener">Open Listing</a>`
+    : `<span class="open-link disabled" aria-disabled="true">Open Listing</span>`;
 
   card.innerHTML = `
-    <div class="card-top">
-      <h2 class="address">${property.address || "Unknown address"}</h2>
-      <div class="badges">
-        <span class="decision ${strategyClass(strategy)}">${strategy}</span>
-        <span class="garage-fit">${garageFit}</span>
+    <div class="card-main-row">
+      <div class="title-block">
+        <h2 class="address">${escapeHtml(property.address || "Unknown address")}</h2>
+        <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
       </div>
+      <div class="primary-metrics">
+        <span><strong>${displayCurrency(property.price)}</strong><small>Price</small></span>
+        <span><strong>${displayPricePerSqft(property.price_per_sqft)}</strong><small>$/Sq Ft</small></span>
+        <span><strong>${escapeHtml(bedroomsBathsDisplay(property))}</strong><small>Beds / Baths</small></span>
+        <span><strong>${displayNumber(property.sq_ft)}</strong><small>Sq Ft</small></span>
+        <span><strong>${escapeHtml(lotDisplay(property))}</strong><small>Lot</small></span>
+        <span><strong>${escapeHtml(listingDateDisplay(property))}</strong><small>Added</small></span>
+      </div>
+      ${listingLink}
     </div>
 
-    <div class="facts">
-      <div class="fact"><span>Price</span><strong>${formatCurrency(property.price)}</strong></div>
-      <div class="fact"><span>Sq Ft</span><strong>${formatNumber(property.sq_ft)}</strong></div>
-      <div class="fact"><span>$/Sq Ft</span><strong>$${formatNumber(property.price_per_sqft)}</strong></div>
-      <div class="fact"><span>Beds / Baths</span><strong>${property.beds ?? "-"} / ${property.baths ?? "-"}</strong></div>
-      <div class="fact"><span>Garage</span><strong>${property.garage || "-"}</strong></div>
-      <div class="fact"><span>DOM</span><strong>${property.days_on_redfin || "-"}</strong></div>
-      <div class="fact"><span>Decision</span><strong>${decision}</strong></div>
+    <div class="market-row">
+      <span class="urgency-indicator ${urgency.className}" title="${escapeHtml(urgency.label)}" aria-label="${escapeHtml(urgency.label)}"></span>
+      <span><strong>Engagement</strong> ${escapeHtml(buyerEngagement(property))}</span>
+      <span><strong>Views</strong> ${displayNumber(property.views)}</span>
+      <span><strong>Favorites</strong> ${displayNumber(property.favorites)}</span>
+      <span><strong>DOM</strong> ${escapeHtml(domDisplay(property))}</span>
+      ${priceDrop ? `<span class="price-drop">${escapeHtml(priceDrop)}</span>` : ""}
     </div>
 
-    <div class="signals">
-      <span class="signal">${property.interest_velocity || "-"}</span>
-      <span class="signal">${property.buyer_interest_signal || "Buyer interest unclear"}</span>
-      <span class="signal">${property.basement || "No Info"} basement</span>
-      <span class="signal">${property.heating || "No Info"} heat</span>
+    <div class="features-row">
+      <span><strong>Garage</strong> ${escapeHtml(displayValue(property.garage))}</span>
+      <span><strong>Type</strong> ${escapeHtml(displayValue(property.garage_type))}</span>
+      <span><strong>Basement</strong> ${escapeHtml(basementDisplay(property.basement))}</span>
+      <span><strong>Fence</strong> ${escapeHtml(displayValue(property.fence))}</span>
+      <span><strong>Flooring</strong> ${escapeHtml(displayValue(property.flooring))}</span>
     </div>
 
-    <div class="card-actions">
-      <span class="source">${property.construction_materials || "No Info"} · ${property.roof || "No Info"} roof</span>
+    <div class="card-footer">
+      <span class="sort-chip">${escapeHtml(sortChipValue(property))}</span>
       <div class="action-buttons">
         <button class="details-button" type="button">Details</button>
-        ${listingLink}
       </div>
     </div>
   `;
@@ -576,14 +691,14 @@ function createCard(property) {
 
 function render() {
   const filtered = getFilteredProperties();
-  updateSummary(filtered);
+  updateCount(filtered);
   renderCards(filtered);
 }
 
 function showDashboardError() {
   properties = [];
   elements.cards.innerHTML = "";
-  updateSummary([]);
+  updateCount([]);
   elements.emptyState.textContent = "Unable to load Google Sheets data.";
   elements.emptyState.hidden = false;
 }

@@ -381,9 +381,24 @@ def apply_fence_interpretation(enriched, idx_data):
         enriched["idx_enriched_fields"].append("fence")
 
 
+def normalize_listing_status(value):
+    if is_fillable_value(value):
+        return None
+
+    text = str(value)
+    if re.search(r"\b(?:Sold|Closed)\b", text, re.IGNORECASE):
+        return "Sold"
+    if re.search(r"\b(?:Pending|Under Contract|Contingent)\b", text, re.IGNORECASE):
+        return "Pending"
+    if re.search(r"\b(?:For Sale|Active)\b", text, re.IGNORECASE):
+        return "For Sale"
+    return None
+
+
 def idx_candidate_values(idx_data):
     derived = idx_data.get("derived", {})
     return {
+        "listing_status": printable_value(normalize_listing_status(idx_data.get("mls_status"))),
         "baths": printable_value(idx_full_baths(idx_data)),
         "garage_type": printable_value(first_section_value(idx_data, ["Garage Type"])),
         "construction_materials": printable_value(
@@ -456,7 +471,7 @@ def merge_idx_details(scored_property, idx_data, idx_url, mls_number):
     for field, idx_value in idx_candidate_values(idx_data).items():
         if idx_value is None:
             continue
-        if field == "baths" or is_fillable_value(enriched.get(field)):
+        if field in {"baths", "listing_status"} or is_fillable_value(enriched.get(field)):
             enriched[field] = idx_value
             enriched["idx_enriched_fields"].append(field)
 

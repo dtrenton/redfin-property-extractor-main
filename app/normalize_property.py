@@ -5,6 +5,7 @@ PROPERTY_FIELDS = [
     "source_pdf",
     "image_folder",
     "address",
+    "listing_status",
     "price",
     "sq_ft",
     "price_per_sqft",

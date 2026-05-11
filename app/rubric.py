@@ -64,6 +64,65 @@ def extract_pdf_full_baths(text):
 
     return None
 
+def detect_listing_status(text):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    current_status_text = "\n".join(lines[:160])
+    badge_statuses = {
+        "SOLD": "Sold",
+        "PENDING": "Pending",
+        "UNDER CONTRACT": "Pending",
+        "CONTINGENT": "Pending",
+        "FOR SALE": "For Sale",
+        "ACTIVE": "For Sale",
+    }
+    price_pattern = re.compile(r"^\$?\d{1,3}(?:,\d{3})+(?:\.\d{2})?$")
+
+    # Redfin PDFs place the current status badge immediately above the large
+    # listing price on the first page. Prefer that local header pattern so
+    # historical sale events do not make active/pending listings look sold.
+    for index, line in enumerate(lines[:100]):
+        if not price_pattern.match(line):
+            continue
+
+        nearby_status_lines = lines[max(0, index - 3) : index]
+        for status_line in reversed(nearby_status_lines):
+            status = badge_statuses.get(status_line.upper())
+            if status:
+                return status
+
+    status_label_pattern = re.compile(r"^(?:MLS Status|Mls Status|Listing Status|Status)\s*:?\s*(.*)$", re.IGNORECASE)
+    for index, line in enumerate(lines[:160]):
+        label_match = status_label_pattern.match(line)
+        if not label_match:
+            continue
+
+        label_value = label_match.group(1).strip()
+        if not label_value and index + 1 < len(lines):
+            label_value = lines[index + 1]
+
+        if re.search(r"\b(?:Sold|Closed)\b", label_value, re.IGNORECASE):
+            return "Sold"
+        if re.search(r"\b(?:Pending|Under Contract|Contingent)\b", label_value, re.IGNORECASE):
+            return "Pending"
+        if re.search(r"\b(?:For Sale|Active)\b", label_value, re.IGNORECASE):
+            return "For Sale"
+
+    for index, line in enumerate(lines[:80]):
+        status = badge_statuses.get(line.upper())
+        if not status:
+            continue
+
+        nearby_lines = lines[index + 1 : index + 6]
+        if any(price_pattern.match(nearby_line) for nearby_line in nearby_lines):
+            return status
+
+    if re.search(r"\bThis home is pending\b", current_status_text, re.IGNORECASE):
+        return "Pending"
+    if re.search(r"\bThis home (?:has )?sold\b", current_status_text, re.IGNORECASE):
+        return "Sold"
+
+    return "For Sale"
+
 def recalculate_price_per_sqft(data):
     price = clean_number(data.get("price"))
     sqft = clean_number(data.get("sq_ft"))
@@ -557,6 +616,7 @@ def main():
     data["mls_number"] = metadata.get("mls_number")
     data["source_pdf"] = metadata.get("source_pdf")
     data["image_folder"] = metadata.get("image_folder")
+    data["listing_status"] = detect_listing_status(text)
 
     # Address
     address = None
