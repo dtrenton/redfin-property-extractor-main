@@ -1,0 +1,87 @@
+[
+  {
+    "pdf_filename": "processed/110 S West Ave Ave, Sioux Falls, SD 57104 _ MLS# 22603244 _ Redfin.pdf",
+    "expected": {
+      "address": "110 S West Ave Ave, Sioux Falls, SD 57104",
+      "listing_url": "https://www.redfin.com/SD/Sioux-Falls/110-S-West-Ave-57104/home/136364449",
+      "garage": "MISSING",
+      "year_built": "1922",
+      "listed_count_1y": 1,
+      "listing_removed_count_1y": 0,
+      "price_change_count_1y": 0,
+      "views": 5,
+      "favorites": 1,
+      "views_per_day": "MISSING",
+      "favorites_per_day": "MISSING",
+      "image_folder": "outputs/images/110-s-west-ave"
+    }
+  },
+  {
+    "pdf_filename": "processed/1904 S Duluth Ave Ave, Sioux Falls, SD 57105 _ MLS# 22602754 _ Redfin.pdf",
+    "expected": {
+      "address": "1904 S Duluth Ave Ave, Sioux Falls, SD 57105",
+      "listing_url": "https://www.redfin.com/SD/Sioux-Falls/1904-S-Duluth-Ave-57105/home/136045944",
+      "garage": "Yes",
+      "year_built": "1937",
+      "listed_count_1y": 2,
+      "listing_removed_count_1y": 1,
+      "price_change_count_1y": 2,
+      "views": 86,
+      "favorites": 4,
+      "views_per_day": 10.75,
+      "favorites_per_day": 0.5,
+      "image_folder": "outputs/images/1904-s-duluth-ave"
+    }
+  },
+  {
+    "pdf_filename": "processed/2111 S Spring Ave Ave, Sioux Falls, SD 57105 _ MLS# 22602966 _ Redfin.pdf",
+    "expected": {
+      "address": "2111 S Spring Ave Ave, Sioux Falls, SD 57105",
+      "listing_url": "https://www.redfin.com/SD/Sioux-Falls/2111-S-Spring-Ave-57105/home/136242558",
+      "garage": "Yes",
+      "year_built": "1900",
+      "listed_count_1y": 1,
+      "listing_removed_count_1y": 0,
+      "price_change_count_1y": 0,
+      "views": 28,
+      "favorites": 2,
+      "views_per_day": "MISSING",
+      "favorites_per_day": "MISSING",
+      "image_folder": "outputs/images/2111-s-spring-ave"
+    }
+  },
+  {
+    "pdf_filename": "processed/418 N Cliff Ave Ave, Sioux Falls, SD 57103 _ MLS# 22603223 _ Redfin.pdf",
+    "expected": {
+      "address": "418 N Cliff Ave Ave, Sioux Falls, SD 57103",
+      "listing_url": "https://www.redfin.com/SD/Sioux-Falls/418-N-Cliff-Ave-57103/home/136359883",
+      "garage": "MISSING",
+      "year_built": "1948",
+      "listed_count_1y": 2,
+      "listing_removed_count_1y": 0,
+      "price_change_count_1y": 0,
+      "views": 1,
+      "favorites": "MISSING",
+      "views_per_day": "MISSING",
+      "favorites_per_day": "MISSING",
+      "image_folder": "outputs/images/418-n-cliff-ave"
+    }
+  },
+  {
+    "pdf_filename": "processed/708 S Summit Ave Ave, Sioux Falls, SD 57104 _ MLS# 22601165 _ Redfin.pdf",
+    "expected": {
+      "address": "708 S Summit Ave Ave, Sioux Falls, SD 57104",
+      "listing_url": "https://www.redfin.com/SD/Sioux-Falls/708-S-Summit-Ave-57104/home/136729881",
+      "garage": "Yes",
+      "year_built": "1948",
+      "listed_count_1y": 1,
+      "listing_removed_count_1y": 0,
+      "price_change_count_1y": 2,
+      "views": 159,
+      "favorites": 2,
+      "views_per_day": 2.45,
+      "favorites_per_day": 0.03,
+      "image_folder": "outputs/images/708-s-summit-ave"
+    }
+  }
+]
