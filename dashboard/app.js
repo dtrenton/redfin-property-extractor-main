@@ -421,10 +421,19 @@ function isPositiveFeature(value) {
   return hasDisplayValue(value)
     && normalized !== "no"
     && normalized !== "none"
+    && normalized !== "unknown"
+    && normalized !== "n/a"
     && normalized !== "does not apply"
-    && normalized !== "no fence"
     && normalized !== "no basement"
     && normalized !== "no garage";
+}
+
+function usefulFeatureValue(value) {
+  return isPositiveFeature(value) ? displayValue(value) : "";
+}
+
+function chip(label, value) {
+  return { label, value };
 }
 
 function featureChips(property) {
@@ -432,21 +441,46 @@ function featureChips(property) {
   const garageType = displayValue(property.garage_type);
   const garageTypeText = normalizeText(garageType);
   if (isPositiveFeature(garageType)) {
-    if (garageTypeText.includes("attached")) chips.push("Garage: Attached");
-    else if (garageTypeText.includes("detached")) chips.push("Garage: Detached");
-    else chips.push(`Garage: ${garageType}`);
+    if (garageTypeText.includes("attached")) chips.push(chip("Garage", "Attached"));
+    else if (garageTypeText.includes("detached")) chips.push(chip("Garage", "Detached"));
+    else chips.push(chip("Garage", garageType));
   }
-  if (basementDisplay(property.basement) === "Yes") chips.push("Basement");
-  if (isPositiveFeature(property.fence)) chips.push(`Exterior: ${displayValue(property.fence)}`);
-  if (isPositiveFeature(property.flooring)) {
-    String(property.flooring)
+
+  const basement = basementDisplay(property.basement);
+  if (basement === "Yes") chips.push(chip("Basement", "Yes"));
+
+  const fence = usefulFeatureValue(property.fence);
+  if (fence) chips.push(chip("Fence", fence));
+
+  if (usefulFeatureValue(property.flooring)) {
+    const flooring = String(property.flooring)
       .split(/[,/;]+/)
       .map((item) => item.trim())
       .filter(Boolean)
-      .slice(0, 3)
-      .forEach((item) => chips.push(`Interior: ${item}`));
+      .slice(0, 2)
+      .join(", ");
+    if (flooring) chips.push(chip("Flooring", flooring));
   }
+
+  const construction = usefulFeatureValue(property.construction_materials);
+  if (construction) chips.push(chip("Construction", construction));
+
+  const foundation = usefulFeatureValue(property.foundation_details);
+  if (foundation) chips.push(chip("Foundation", foundation));
+
+  const roof = usefulFeatureValue(property.roof);
+  if (roof) chips.push(chip("Roof", roof));
+
   return chips;
+}
+
+function renderFeatureChip(item) {
+  return `
+    <span class="feature-chip">
+      <small>${escapeHtml(item.label)}</small>
+      <strong>${escapeHtml(item.value)}</strong>
+    </span>
+  `;
 }
 
 function sortChipValue(property) {
@@ -764,7 +798,7 @@ function createCard(property) {
 
     ${chips.length ? `
       <div class="features-row">
-        ${chips.map((chip) => `<span class="feature-chip">${escapeHtml(chip)}</span>`).join("")}
+        ${chips.map(renderFeatureChip).join("")}
       </div>
     ` : ""}
 
