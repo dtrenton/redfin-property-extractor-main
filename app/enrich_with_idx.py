@@ -13,6 +13,7 @@ try:
         update_final_decision,
         update_market_activity,
         update_property_risk,
+        update_strategy_category,
     )
 except ModuleNotFoundError:
     from app.extract_idx_page import extract_idx_page
@@ -23,6 +24,7 @@ except ModuleNotFoundError:
         update_final_decision,
         update_market_activity,
         update_property_risk,
+        update_strategy_category,
     )
 
 
@@ -154,7 +156,7 @@ def derive_fence_value(idx_data):
 
     normalized = str(fencing).strip().lower()
     if normalized in {"none", "no", "n/a"}:
-        return "No"
+        return "No Fence"
     return "Yes"
 
 
@@ -313,11 +315,76 @@ def apply_garage_interpretation(enriched, idx_data):
         enriched["idx_enriched_fields"].append("garage")
 
 
+def apply_garage_type_interpretation(enriched):
+    if str(enriched.get("garage", "")).strip().lower() != "no":
+        return
+
+    garage_type = enriched.get("garage_type")
+    if is_fillable_value(garage_type) or str(garage_type).strip().lower() in {"no", "none", "no garage"}:
+        enriched["garage_type"] = "No Garage"
+        if "garage_type" not in enriched["idx_enriched_fields"]:
+            enriched["idx_enriched_fields"].append("garage_type")
+
+
+def idx_basement_field(idx_data):
+    return first_section_value(idx_data, ["Basement"])
+
+
+def interpret_idx_basement(idx_data):
+    basement = idx_basement_field(idx_data)
+    if basement is None:
+        return "No Basement"
+
+    normalized = str(basement).strip().lower()
+    if normalized in {"", "none", "no", "n/a", "no basement"}:
+        return "No Basement"
+
+    return basement
+
+
+def apply_basement_interpretation(enriched, idx_data):
+    if not is_fillable_value(enriched.get("basement")):
+        return
+
+    basement = interpret_idx_basement(idx_data)
+    if basement:
+        enriched["basement"] = basement
+        enriched["idx_enriched_fields"].append("basement")
+
+
+def idx_fence_field(idx_data):
+    return first_section_value(idx_data, ["Fencing", "Fence"])
+
+
+def interpret_idx_fence(idx_data):
+    fence = idx_fence_field(idx_data)
+    if fence is None:
+        return "No Fence"
+
+    normalized = str(fence).strip().lower()
+    if normalized in {"", "none", "no", "n/a", "no fence"}:
+        return "No Fence"
+
+    return fence
+
+
+def apply_fence_interpretation(enriched, idx_data):
+    current = enriched.get("fence")
+    if not is_fillable_value(current):
+        if str(current).strip().lower() in {"no", "none", "no fence"}:
+            enriched["fence"] = "No Fence"
+        return
+
+    fence = interpret_idx_fence(idx_data)
+    if fence:
+        enriched["fence"] = fence
+        enriched["idx_enriched_fields"].append("fence")
+
+
 def idx_candidate_values(idx_data):
     derived = idx_data.get("derived", {})
     return {
         "baths": printable_value(idx_full_baths(idx_data)),
-        "basement": printable_value(derived.get("basement")),
         "garage_type": printable_value(first_section_value(idx_data, ["Garage Type"])),
         "construction_materials": printable_value(
             first_section_value(idx_data, ["Construction Materials"])
@@ -393,14 +460,18 @@ def merge_idx_details(scored_property, idx_data, idx_url, mls_number):
             enriched[field] = idx_value
             enriched["idx_enriched_fields"].append(field)
 
+    apply_basement_interpretation(enriched, idx_data)
+    apply_fence_interpretation(enriched, idx_data)
     apply_price_reduction_fields(enriched)
     apply_sqft_validation(enriched, idx_data)
     recalculate_price_per_sqft(enriched)
     apply_garage_interpretation(enriched, idx_data)
+    apply_garage_type_interpretation(enriched)
     update_extraction_quality(enriched)
     update_property_risk(enriched)
     update_market_activity(enriched)
     update_final_decision(enriched)
+    update_strategy_category(enriched)
 
     return enriched
 

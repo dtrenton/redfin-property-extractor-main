@@ -34,9 +34,12 @@ HEADERS = [
     "flooring",
     "fence",
     "urgency_score",
+    "strategy_category",
+    "garage_fit",
     "final_decision",
     "date_added",
     "listing_url",
+    "image_folder",
 ]
 
 IDX_EXPORT_HEADERS = [
@@ -114,11 +117,12 @@ REMOVED_EXPORT_HEADERS = {
     "strategy_fit_flags",
     "notes",
     "source_pdf",
-    "image_folder",
     "nar_contact_info",
     "listing_agent_name",
     "listing_brokerage",
     "listing_agent_email",
+    "city",
+    "state",
 }
 
 
@@ -206,15 +210,57 @@ def does_not_apply(header, data):
         "no",
         "none",
         "no basement",
+        "no info",
         "missing",
     }:
         return True
     return False
 
 
+def idx_enrichment_succeeded(data):
+    return data.get("idx_enrichment_status") == "success" or bool(data.get("idx_details"))
+
+
+def idx_has_basement_field(data):
+    for section in data.get("idx_details", {}).get("sections", {}).values():
+        if "Basement" in section:
+            return True
+    return False
+
+
+def idx_has_fence_field(data):
+    for section in data.get("idx_details", {}).get("sections", {}).values():
+        if "Fencing" in section or "Fence" in section:
+            return True
+    return False
+
+
+def garage_is_no(data):
+    return str(data.get("garage", "")).strip().lower() == "no"
+
+
+def garage_fit_value(data):
+    garage = str(data.get("garage", "")).strip().lower()
+    if garage == "yes":
+        return "Garage Present"
+    if garage == "no":
+        return "No Garage"
+    return "Garage Unknown"
+
+
 def placeholder_for_header(header, data):
+    if header == "garage_spaces" and garage_is_no(data):
+        return 0
+    if header == "garage_type" and garage_is_no(data):
+        return "No Garage"
+    if header == "basement" and idx_enrichment_succeeded(data) and not idx_has_basement_field(data):
+        return "No Basement"
+    if header == "fence" and idx_enrichment_succeeded(data) and not idx_has_fence_field(data):
+        return "No Fence"
     if does_not_apply(header, data):
         return "Does Not Apply"
+    if header == "finished_basement_pct":
+        return "No Info"
     if header in DASH_PLACEHOLDER_HEADERS:
         return "-"
     if header in MARKET_TIMING_HEADERS:
@@ -261,8 +307,16 @@ def value_for_header(data, header):
     }
 
     value = data.get(header)
+    if header == "garage_fit" and is_missing_export_value(value):
+        value = garage_fit_value(data)
+
     if is_missing_export_value(value) and header in idx_fallbacks:
         value = idx_fallbacks[header]()
+
+    if header == "fence" and value is not None and str(value).strip().lower() in {"no", "none", "no fence"}:
+        return "No Fence"
+    if header == "garage_type" and value is not None and str(value).strip().lower() in {"no", "none", "no garage"}:
+        return "No Garage"
 
     if header in PRICE_REDUCTION_HEADERS:
         price_before_reduction = numeric_value(

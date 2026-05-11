@@ -20,6 +20,8 @@ PROPERTY_FIELDS = [
     "interest_velocity",
     "favorite_conversion_rate",
     "buyer_interest_signal",
+    "strategy_category",
+    "garage_fit",
     "listed_count_1y",
     "listing_removed_count_1y",
     "price_change_count_1y",

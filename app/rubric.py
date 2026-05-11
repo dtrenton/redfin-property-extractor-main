@@ -310,6 +310,13 @@ def classify_garage_requirement(data):
         return "Fails requirement"
     return "Unknown"
 
+def classify_garage_fit(data):
+    if data.get("garage") == "Yes":
+        return "Garage Present"
+    if data.get("garage") == "No":
+        return "No Garage"
+    return "Garage Unknown"
+
 def classify_price_per_sqft(data):
     if not has_value(data, "price_per_sqft"):
         return "Price per sq ft missing"
@@ -321,6 +328,7 @@ def classify_price_per_sqft(data):
 
 def update_property_risk(data):
     data["age_risk"] = classify_age_risk(data)
+    data["garage_fit"] = classify_garage_fit(data)
     data["garage_requirement"] = classify_garage_requirement(data)
     data["price_per_sqft_signal"] = classify_price_per_sqft(data)
 
@@ -398,14 +406,14 @@ def update_final_decision(data):
     core_fields, _secondary_fields = extraction_quality_fields()
     missing_core_fields = get_missing_fields(data, core_fields)
 
-    if data["garage_requirement"] == "Fails requirement":
-        final_decision = "Pass"
-    elif data["data_completeness_score"] < 40 or len(missing_core_fields) >= 4:
+    if data["data_completeness_score"] < 40 or len(missing_core_fields) >= 4:
         final_decision = "Data Insufficient"
     elif data["garage_requirement"] == "Unknown" or data["data_completeness_score"] < 70:
         final_decision = "Manual Verification Required"
     elif data["age_risk"] == "Higher age risk" and data["data_completeness_score"] < 85:
         final_decision = "Manual Verification Required"
+    elif data.get("property_risk_score", 0) >= 5 and data["garage_requirement"] != "Fails requirement":
+        final_decision = "Pass"
     elif (
         data.get("buyer_leverage_score", 0) >= 4
         and has_value(data, "price_per_sqft")
@@ -426,6 +434,114 @@ def update_final_decision(data):
 
     data["final_decision"] = final_decision
 
+    return data
+
+def no_garage_leverage_signals(data, stale_or_aging, buyer_signal):
+    return [
+        data.get("buyer_leverage_score", 0) >= 3,
+        stale_or_aging,
+        has_value(data, "listed_count_1y") and data["listed_count_1y"] > 1,
+        has_value(data, "listing_removed_count_1y") and data["listing_removed_count_1y"] >= 1,
+        has_value(data, "price_change_count_1y") and data["price_change_count_1y"] >= 1,
+        has_value(data, "price_reduction_amount") and data["price_reduction_amount"] > 0,
+        data.get("price_per_sqft_signal") == "Lower price per sq ft",
+        "low buyer attention" in buyer_signal,
+    ]
+
+def classify_strategy_category(data):
+    core_fields, _secondary_fields = extraction_quality_fields()
+    missing_core_fields = get_missing_fields(data, core_fields)
+    garage_fit = classify_garage_fit(data)
+    final_decision_manual = data.get("final_decision") in {
+        "Manual Verification Required",
+        "Data Insufficient",
+    }
+    if garage_fit == "Garage Unknown" and data.get("final_decision") == "Manual Verification Required":
+        final_decision_manual = False
+
+    manual_review = (
+        final_decision_manual
+        or len(missing_core_fields) >= 3
+        or data.get("extraction_confidence_score", 100) < 60
+    )
+
+    dom = int(data["days_on_redfin"]) if has_value(data, "days_on_redfin") else None
+    dom_status = data.get("dom_status")
+    recent_dom = dom is not None and dom <= 29
+    stale_or_aging = dom is not None and dom >= 30
+    price_per_sqft = data.get("price_per_sqft") if has_value(data, "price_per_sqft") else None
+    price_not_extreme = price_per_sqft is not None and 100 <= price_per_sqft <= 220
+    manageable_risk = data.get("property_risk_score", 0) <= 3
+    buyer_signal = str(data.get("buyer_interest_signal", "")).lower()
+    velocity = str(data.get("interest_velocity", "")).lower()
+    normal_or_strong_interest = (
+        "strong buyer interest" in buyer_signal
+        or "normal market interest" in buyer_signal
+        or velocity in {"moderate", "high"}
+    )
+    high_risk = data.get("property_risk_score", 0) >= 5
+    high_price = data.get("price_per_sqft_signal") == "Higher price per sq ft"
+    final_pass_beyond_garage = (
+        data.get("final_decision") == "Pass"
+        and data.get("garage_requirement") != "Fails requirement"
+    )
+
+    data["garage_fit"] = garage_fit
+
+    if garage_fit == "Garage Unknown":
+        if not manual_review and manageable_risk and not high_price:
+            return "Watch"
+        return "Manual Review"
+
+    if garage_fit == "No Garage":
+        if high_risk or high_price or final_pass_beyond_garage:
+            return "Pass - No Garage"
+
+        if manual_review:
+            return "Manual Review"
+
+        if sum(bool(signal) for signal in no_garage_leverage_signals(data, stale_or_aging, buyer_signal)) >= 1:
+            return "Leverage Opportunity - No Garage"
+
+        return "Watch - No Garage"
+
+    if data.get("final_decision") == "Pass":
+        return "Pass"
+
+    if manual_review:
+        return "Manual Review"
+
+    leverage_signals = [
+        stale_or_aging,
+        dom_status == "Stale",
+        has_value(data, "listing_removed_count_1y") and data["listing_removed_count_1y"] >= 1,
+        has_value(data, "price_change_count_1y") and data["price_change_count_1y"] >= 1,
+        has_value(data, "price_reduction_amount") and data["price_reduction_amount"] > 0,
+        "low buyer attention" in buyer_signal,
+        data.get("buyer_leverage_score", 0) >= 3,
+    ]
+
+    if (
+        data.get("final_decision") in {"Consider", "Watch"}
+        and recent_dom
+        and normal_or_strong_interest
+        and manageable_risk
+        and price_not_extreme
+    ):
+        return "Competitive Target"
+
+    if (
+        data.get("final_decision") != "Pass"
+        and manageable_risk
+        and sum(bool(signal) for signal in leverage_signals) >= 2
+    ):
+        return "Leverage Opportunity"
+
+    return "Watch"
+
+def update_strategy_category(data):
+    data["garage_fit"] = classify_garage_fit(data)
+    data["strategy_category"] = classify_strategy_category(data)
     return data
 
 def main():
@@ -584,6 +700,7 @@ def main():
 
     # Recommendation logic is conservative and uses only known listing data.
     update_final_decision(data)
+    update_strategy_category(data)
 
 
     # Save

@@ -32,17 +32,27 @@ KNOWN_LABELS = {
     "Architectural Style",
     "Basement",
     "Basement Finished Sq.Ft.",
+    "Basement Finished Sq Ft",
+    "Basement Finished SqFt",
     "Basement Level # of Bedrooms",
     "Basement Level Bath Description",
     "Basement Level Bedrooms",
     "Basement Level Number Bedrooms",
     "Basement Unfinished Sq.Ft.",
+    "Basement Unfinished Sq Ft",
+    "Basement Unfinished SqFt",
     "Bathrooms Full",
     "Bathrooms Half",
     "Bathrooms Total",
     "Bedrooms Total",
     "Below Grade Finished Area",
+    "Below Grade Finished Sq.Ft.",
+    "Below Grade Finished Sq Ft",
+    "Below Grade Finished SqFt",
     "Below Grade Unfinished Area",
+    "Below Grade Unfinished Sq.Ft.",
+    "Below Grade Unfinished Sq Ft",
+    "Below Grade Unfinished SqFt",
     "City",
     "Construction Materials",
     "Cooling",
@@ -525,21 +535,53 @@ def derive_garage(fields, debug):
 
 def derive_finished_basement_pct(fields, debug):
     finished = number_from_value(
-        first_field(fields, ["Below Grade Finished Area", "Basement Finished Sq.Ft."]),
+        first_field(
+            fields,
+            [
+                "Below Grade Finished Area",
+                "Below Grade Finished Sq.Ft.",
+                "Below Grade Finished Sq Ft",
+                "Below Grade Finished SqFt",
+                "Basement Finished Sq.Ft.",
+                "Basement Finished Sq Ft",
+                "Basement Finished SqFt",
+            ],
+        ),
         debug,
         "Below Grade Finished Area",
     )
     unfinished = number_from_value(
-        first_field(fields, ["Below Grade Unfinished Area", "Basement Unfinished Sq.Ft."]),
+        first_field(
+            fields,
+            [
+                "Below Grade Unfinished Area",
+                "Below Grade Unfinished Sq.Ft.",
+                "Below Grade Unfinished Sq Ft",
+                "Below Grade Unfinished SqFt",
+                "Basement Unfinished Sq.Ft.",
+                "Basement Unfinished Sq Ft",
+                "Basement Unfinished SqFt",
+            ],
+        ),
         debug,
         "Below Grade Unfinished Area",
     )
 
     if finished is None and unfinished is None:
         return None, None
+    if finished is None or unfinished is None:
+        debug["number_conversion_errors"].append(
+            {
+                "label": "finished_basement_pct",
+                "value": {
+                    "finished": finished,
+                    "unfinished": unfinished,
+                },
+                "reason": "Both finished and unfinished basement areas are required for percentage calculation",
+            }
+        )
+        return None, None
 
-    finished = finished or 0
-    unfinished = unfinished or 0
     total = finished + unfinished
     if total <= 0:
         return None, None

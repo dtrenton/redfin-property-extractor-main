@@ -5,6 +5,14 @@ __pycache__/
 
 # C extensions
 *.so
+processed/
+samples/
+outputs/
+credentials/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
 
 # Distribution / packaging
 .Python

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Property Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Redfin Property Extractor</p>
+        <h1>Property Dashboard</h1>
+      </div>
+      <div class="header-actions">
+        <span id="property-count" class="count-pill">0 properties</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="controls" aria-label="Dashboard controls">
+        <label class="search-field">
+          <span>Search</span>
+          <input id="search-input" type="search" placeholder="Address, strategy, garage...">
+        </label>
+
+        <label>
+          <span>Strategy</span>
+          <select id="strategy-filter">
+            <option value="all">All strategy categories</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Garage Fit</span>
+          <select id="garage-fit-filter">
+            <option value="all">All garage fit</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Sort Column</span>
+          <select id="sort-select">
+          </select>
+        </label>
+
+        <label>
+          <span>Direction</span>
+          <select id="sort-direction">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="summary-grid" aria-label="Portfolio summary">
+        <article class="metric">
+          <span class="metric-label">Competitive</span>
+          <strong id="metric-competitive">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Leverage</span>
+          <strong id="metric-leverage">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Watch</span>
+          <strong id="metric-watch">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Pass</span>
+          <strong id="metric-pass">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Manual Review</span>
+          <strong id="metric-manual">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">No Garage Opps</span>
+          <strong id="metric-no-garage">0</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Median $/sq ft</span>
+          <strong id="metric-pps">-</strong>
+        </article>
+      </section>
+
+      <section id="cards" class="cards" aria-live="polite"></section>
+      <p id="empty-state" class="empty-state" hidden>No matching properties.</p>
+    </main>
+
+    <div id="details-modal" class="modal-backdrop" hidden>
+      <aside class="details-panel" role="dialog" aria-modal="true" aria-labelledby="details-title">
+        <div class="details-header">
+          <div>
+            <p class="eyebrow">Property Details</p>
+            <h2 id="details-title">Property</h2>
+          </div>
+          <button id="details-close" class="icon-button" type="button" aria-label="Close details">×</button>
+        </div>
+        <div id="details-content" class="details-content"></div>
+      </aside>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
