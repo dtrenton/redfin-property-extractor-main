@@ -310,20 +310,20 @@ function urgencyInfo(property) {
   const text = normalizeText(property.urgency_score);
   if (score !== null) {
     if (score <= 4) {
-      if (score >= 4) return { className: "urgency-red", label: "Act quickly" };
-      if (score >= 3) return { className: "urgency-orange", label: "Elevated urgency" };
-      if (score >= 2) return { className: "urgency-yellow", label: "Moderate urgency" };
-      return { className: "urgency-green", label: "Low urgency / watch" };
+      if (score >= 4) return { className: "urgency-green", label: "Act quickly" };
+      if (score >= 3) return { className: "urgency-yellow", label: "Moderate urgency" };
+      if (score >= 2) return { className: "urgency-orange", label: "Weak urgency" };
+      return { className: "urgency-red", label: "Very low urgency" };
     }
-    if (score >= 75) return { className: "urgency-red", label: "Act quickly" };
-    if (score >= 50) return { className: "urgency-orange", label: "Elevated urgency" };
-    if (score >= 25) return { className: "urgency-yellow", label: "Moderate urgency" };
-    return { className: "urgency-green", label: "Low urgency / watch" };
+    if (score >= 75) return { className: "urgency-green", label: "Act quickly" };
+    if (score >= 50) return { className: "urgency-yellow", label: "Moderate urgency" };
+    if (score >= 25) return { className: "urgency-orange", label: "Weak urgency" };
+    return { className: "urgency-red", label: "Very low urgency" };
   }
-  if (text.includes("high") || text.includes("act")) return { className: "urgency-red", label: "Act quickly" };
-  if (text.includes("elevated")) return { className: "urgency-orange", label: "Elevated urgency" };
-  if (text.includes("moderate")) return { className: "urgency-yellow", label: "Moderate urgency" };
-  return { className: "urgency-green", label: "Low urgency / watch" };
+  if (text.includes("high") || text.includes("strong") || text.includes("act")) return { className: "urgency-green", label: "Act quickly" };
+  if (text.includes("elevated") || text.includes("moderate")) return { className: "urgency-yellow", label: "Moderate urgency" };
+  if (text.includes("low") || text.includes("weak")) return { className: "urgency-orange", label: "Weak urgency" };
+  return { className: "urgency-red", label: "Very low urgency" };
 }
 
 function buyerEngagement(property) {
