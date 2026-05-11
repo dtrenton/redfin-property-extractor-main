@@ -305,27 +305,6 @@ function listingStatusDisplay(status) {
   return "For Sale";
 }
 
-function urgencyInfo(property) {
-  const score = parseNumber(property.urgency_score);
-  const text = normalizeText(property.urgency_score);
-  if (score !== null) {
-    if (score <= 4) {
-      if (score >= 4) return { className: "urgency-green", label: "Act quickly" };
-      if (score >= 3) return { className: "urgency-yellow", label: "Moderate urgency" };
-      if (score >= 2) return { className: "urgency-orange", label: "Weak urgency" };
-      return { className: "urgency-red", label: "Very low urgency" };
-    }
-    if (score >= 75) return { className: "urgency-green", label: "Act quickly" };
-    if (score >= 50) return { className: "urgency-yellow", label: "Moderate urgency" };
-    if (score >= 25) return { className: "urgency-orange", label: "Weak urgency" };
-    return { className: "urgency-red", label: "Very low urgency" };
-  }
-  if (text.includes("high") || text.includes("strong") || text.includes("act")) return { className: "urgency-green", label: "Act quickly" };
-  if (text.includes("elevated") || text.includes("moderate")) return { className: "urgency-yellow", label: "Moderate urgency" };
-  if (text.includes("low") || text.includes("weak")) return { className: "urgency-orange", label: "Weak urgency" };
-  return { className: "urgency-red", label: "Very low urgency" };
-}
-
 function buyerEngagement(property) {
   if (hasDisplayValue(property.buyer_interest_signal)) return property.buyer_interest_signal;
   if (hasDisplayValue(property.interest_velocity)) return `${property.interest_velocity} interest`;
@@ -340,6 +319,76 @@ function domDisplay(property) {
   if (hasDisplayValue(property.days_on_redfin)) return `${property.days_on_redfin} DOM`;
   if (hasDisplayValue(property.dom_status)) return property.dom_status;
   return "—";
+}
+
+function compactDomDisplay(property) {
+  const days = parseNumber(property.days_on_redfin);
+  if (days !== null) return `${formatNumber(days)}d`;
+  if (hasDisplayValue(property.dom_status)) return property.dom_status;
+  return "—";
+}
+
+function priceReductionCompact(property) {
+  const count = parseNumber(property.price_change_count_1y);
+  if (hasDisplayValue(property.price_reduction_pct)) return property.price_reduction_pct;
+  if (hasDisplayValue(property.price_reduction_amount)) return property.price_reduction_amount;
+  if (count !== null && count > 0) return `${count} change${count === 1 ? "" : "s"}`;
+  return "";
+}
+
+function marketHeat(property) {
+  const viewsPerDay = parseNumber(property.views_per_day);
+  const favoritesPerDay = parseNumber(property.favorites_per_day);
+  const conversion = parseNumber(property.favorite_conversion_rate);
+  const days = parseNumber(property.days_on_redfin);
+  const status = normalizeText(listingStatusDisplay(property.listing_status));
+  const signal = normalizeText(property.buyer_interest_signal);
+  const priceChanges = parseNumber(property.price_change_count_1y);
+  let score = 0;
+
+  if (viewsPerDay !== null) {
+    if (viewsPerDay >= 25) score += 3;
+    else if (viewsPerDay >= 10) score += 2;
+    else if (viewsPerDay > 0) score += 1;
+  }
+  if (favoritesPerDay !== null) {
+    if (favoritesPerDay >= 2) score += 2;
+    else if (favoritesPerDay >= 0.75) score += 1;
+  }
+  if (conversion !== null) {
+    if (conversion >= 0.08) score += 1;
+    if (conversion >= 0.15) score += 1;
+  }
+  if (days !== null) {
+    if (days <= 7) score += 2;
+    else if (days <= 29) score += 1;
+    else if (days >= 60) score -= 1;
+  }
+  if (status.includes("pending") || status.includes("sold")) score += 2;
+  if (priceChanges !== null && priceChanges > 0) score -= 1;
+  if (signal.includes("strong")) score += 2;
+  else if (signal.includes("normal") || signal.includes("moderate")) score += 1;
+  else if (signal.includes("low") || signal.includes("weak")) score -= 1;
+
+  let flames = 0;
+  if (score >= 8) flames = 4;
+  else if (score >= 6) flames = 3;
+  else if (score >= 3) flames = 2;
+  else if (score >= 1) flames = 1;
+
+  const labels = [
+    "Very low market heat",
+    "Weak urgency",
+    "Moderate urgency",
+    "Strong urgency",
+    "Extremely hot / likely to move quickly",
+  ];
+  return {
+    flames,
+    label: labels[flames],
+    className: `market-heat-${flames}`,
+    text: "🔥".repeat(flames),
+  };
 }
 
 function priceReductionText(property) {
@@ -360,6 +409,39 @@ function priceReductionText(property) {
   if (date) text += ` on ${date}`;
   if (!parts.length && !date && count !== null && count > 0) text += `: ${count} change${count === 1 ? "" : "s"} in 1y`;
   return text;
+}
+
+function isPositiveFeature(value) {
+  const normalized = normalizeText(value);
+  return hasDisplayValue(value)
+    && normalized !== "no"
+    && normalized !== "none"
+    && normalized !== "does not apply"
+    && normalized !== "no fence"
+    && normalized !== "no basement"
+    && normalized !== "no garage";
+}
+
+function featureChips(property) {
+  const chips = [];
+  const garageType = displayValue(property.garage_type);
+  const garageTypeText = normalizeText(garageType);
+  if (isPositiveFeature(garageType)) {
+    if (garageTypeText.includes("attached")) chips.push("🚗 Attached");
+    else if (garageTypeText.includes("detached")) chips.push("🚗 Detached");
+    else chips.push(`🚗 ${garageType}`);
+  }
+  if (basementDisplay(property.basement) === "Yes") chips.push("🏠 Basement");
+  if (isPositiveFeature(property.fence)) chips.push(displayValue(property.fence));
+  if (isPositiveFeature(property.flooring)) {
+    String(property.flooring)
+      .split(/[,/;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .forEach((item) => chips.push(item));
+  }
+  return chips;
 }
 
 function sortChipValue(property) {
@@ -642,8 +724,10 @@ function createCard(property) {
   card.className = "property-card";
 
   const listingStatus = listingStatusDisplay(property.listing_status);
-  const urgency = urgencyInfo(property);
+  const heat = marketHeat(property);
   const priceDrop = priceReductionText(property);
+  const compactPriceDrop = priceReductionCompact(property);
+  const chips = featureChips(property);
   const listingLink = hasDisplayValue(property.listing_url)
     ? `<a class="open-link" href="${escapeHtml(property.listing_url)}" target="_blank" rel="noopener">Open Listing</a>`
     : `<span class="open-link disabled" aria-disabled="true">Open Listing</span>`;
@@ -666,21 +750,18 @@ function createCard(property) {
     </div>
 
     <div class="market-row">
-      <span class="urgency-indicator ${urgency.className}" title="${escapeHtml(urgency.label)}" aria-label="${escapeHtml(urgency.label)}"></span>
-      <span><strong>Engagement</strong> ${escapeHtml(buyerEngagement(property))}</span>
-      <span><strong>Views</strong> ${displayNumber(property.views)}</span>
-      <span><strong>Favorites</strong> ${displayNumber(property.favorites)}</span>
-      <span><strong>DOM</strong> ${escapeHtml(domDisplay(property))}</span>
-      ${priceDrop ? `<span class="price-drop">${escapeHtml(priceDrop)}</span>` : ""}
+      <span class="market-heat ${heat.className}" title="${escapeHtml(heat.label)}" aria-label="${escapeHtml(heat.label)}">${escapeHtml(heat.text)}</span>
+      <span class="market-metric" title="${escapeHtml(buyerEngagement(property))}">👁 ${displayNumber(property.views)}</span>
+      <span class="market-metric">★ ${displayNumber(property.favorites)}</span>
+      <span class="market-metric">⏱ ${escapeHtml(compactDomDisplay(property))}</span>
+      ${compactPriceDrop ? `<span class="price-drop" title="${escapeHtml(priceDrop)}">↓ ${escapeHtml(compactPriceDrop)}</span>` : ""}
     </div>
 
-    <div class="features-row">
-      <span><strong>Garage</strong> ${escapeHtml(displayValue(property.garage))}</span>
-      <span><strong>Type</strong> ${escapeHtml(displayValue(property.garage_type))}</span>
-      <span><strong>Basement</strong> ${escapeHtml(basementDisplay(property.basement))}</span>
-      <span><strong>Fence</strong> ${escapeHtml(displayValue(property.fence))}</span>
-      <span><strong>Flooring</strong> ${escapeHtml(displayValue(property.flooring))}</span>
-    </div>
+    ${chips.length ? `
+      <div class="features-row">
+        ${chips.map((chip) => `<span class="feature-chip">${escapeHtml(chip)}</span>`).join("")}
+      </div>
+    ` : ""}
 
     <div class="card-footer">
       <span class="sort-chip">${escapeHtml(sortChipValue(property))}</span>
