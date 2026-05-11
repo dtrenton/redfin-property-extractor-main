@@ -543,9 +543,147 @@ body.modal-open {
   }
 }
 
+@media (max-width: 768px) {
+  .app-header {
+    gap: 14px;
+    padding: 18px 14px 14px;
+  }
+
+  h1 {
+    font-size: 23px;
+  }
+
+  main {
+    width: 100%;
+    padding: 12px 10px 28px;
+  }
+
+  .controls {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .cards,
+  .property-card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .property-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 10px;
+  }
+
+  .card-main-row,
+  .market-row,
+  .features-row,
+  .card-footer {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .card-main-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .title-block {
+    align-items: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .address {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .primary-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 7px;
+    order: initial;
+  }
+
+  .primary-metrics span {
+    min-width: 0;
+  }
+
+  .primary-metrics strong {
+    font-size: 13px;
+    white-space: normal;
+  }
+
+  .market-row,
+  .features-row {
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .market-heat,
+  .market-metric,
+  .price-drop,
+  .feature-chip {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .market-heat {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .market-metric,
+  .price-drop {
+    flex: 1 1 calc(50% - 6px);
+    padding: 4px 7px;
+    white-space: normal;
+  }
+
+  .feature-chip {
+    flex: 1 1 calc(50% - 6px);
+    padding: 6px 8px;
+  }
+
+  .feature-chip strong {
+    white-space: normal;
+  }
+
+  .card-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sort-chip {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .open-link,
+  .details-button {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .action-buttons {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
 @media (max-width: 560px) {
   .controls,
-  .primary-metrics,
   .detail-grid {
     grid-template-columns: 1fr;
   }
