@@ -387,7 +387,7 @@ function marketHeat(property) {
     flames,
     label: labels[flames],
     className: `market-heat-${flames}`,
-    text: "🔥".repeat(flames),
+    text: labels[flames],
   };
 }
 
@@ -404,11 +404,16 @@ function priceReductionText(property) {
   if (hasDisplayValue(property.price_reduction_amount) && !parts.length) parts.push(displayValue(property.price_reduction_amount));
 
   const date = compactDate(property.price_reduction_date);
-  let text = "↓ Price drop";
+  let text = "Price drop";
   if (parts.length) text += `: ${parts.join(" ")}`;
   if (date) text += ` on ${date}`;
   if (!parts.length && !date && count !== null && count > 0) text += `: ${count} change${count === 1 ? "" : "s"} in 1y`;
   return text;
+}
+
+function priceReductionLabel(property) {
+  const reduction = priceReductionCompact(property);
+  return reduction ? `Price Reduction: ${reduction}` : "";
 }
 
 function isPositiveFeature(value) {
@@ -427,19 +432,19 @@ function featureChips(property) {
   const garageType = displayValue(property.garage_type);
   const garageTypeText = normalizeText(garageType);
   if (isPositiveFeature(garageType)) {
-    if (garageTypeText.includes("attached")) chips.push("🚗 Attached");
-    else if (garageTypeText.includes("detached")) chips.push("🚗 Detached");
-    else chips.push(`🚗 ${garageType}`);
+    if (garageTypeText.includes("attached")) chips.push("Garage: Attached");
+    else if (garageTypeText.includes("detached")) chips.push("Garage: Detached");
+    else chips.push(`Garage: ${garageType}`);
   }
-  if (basementDisplay(property.basement) === "Yes") chips.push("🏠 Basement");
-  if (isPositiveFeature(property.fence)) chips.push(displayValue(property.fence));
+  if (basementDisplay(property.basement) === "Yes") chips.push("Basement");
+  if (isPositiveFeature(property.fence)) chips.push(`Exterior: ${displayValue(property.fence)}`);
   if (isPositiveFeature(property.flooring)) {
     String(property.flooring)
       .split(/[,/;]+/)
       .map((item) => item.trim())
       .filter(Boolean)
       .slice(0, 3)
-      .forEach((item) => chips.push(item));
+      .forEach((item) => chips.push(`Interior: ${item}`));
   }
   return chips;
 }
@@ -726,7 +731,7 @@ function createCard(property) {
   const listingStatus = listingStatusDisplay(property.listing_status);
   const heat = marketHeat(property);
   const priceDrop = priceReductionText(property);
-  const compactPriceDrop = priceReductionCompact(property);
+  const priceReduction = priceReductionLabel(property);
   const chips = featureChips(property);
   const listingLink = hasDisplayValue(property.listing_url)
     ? `<a class="open-link" href="${escapeHtml(property.listing_url)}" target="_blank" rel="noopener">Open Listing</a>`
@@ -750,11 +755,11 @@ function createCard(property) {
     </div>
 
     <div class="market-row">
-      <span class="market-heat ${heat.className}" title="${escapeHtml(heat.label)}" aria-label="${escapeHtml(heat.label)}">${escapeHtml(heat.text)}</span>
-      <span class="market-metric" title="${escapeHtml(buyerEngagement(property))}">👁 ${displayNumber(property.views)}</span>
-      <span class="market-metric">★ ${displayNumber(property.favorites)}</span>
-      <span class="market-metric">⏱ ${escapeHtml(compactDomDisplay(property))}</span>
-      ${compactPriceDrop ? `<span class="price-drop" title="${escapeHtml(priceDrop)}">↓ ${escapeHtml(compactPriceDrop)}</span>` : ""}
+      <span class="market-heat ${heat.className}" title="${escapeHtml(buyerEngagement(property))}" aria-label="${escapeHtml(heat.label)}">Market Heat: ${escapeHtml(heat.text)}</span>
+      <span class="market-metric">Views: ${displayNumber(property.views)}</span>
+      <span class="market-metric">Favorites: ${displayNumber(property.favorites)}</span>
+      <span class="market-metric">DOM: ${escapeHtml(compactDomDisplay(property))}</span>
+      ${priceReduction ? `<span class="price-drop" title="${escapeHtml(priceDrop)}">${escapeHtml(priceReduction)}</span>` : ""}
     </div>
 
     ${chips.length ? `
