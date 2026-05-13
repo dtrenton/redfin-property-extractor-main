@@ -82,9 +82,23 @@ main {
 
 .controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1.35fr) minmax(125px, 0.9fr) repeat(3, minmax(145px, 1fr));
-  gap: 10px;
+  gap: 12px;
+  max-width: 760px;
   margin-bottom: 14px;
+}
+
+.top-controls,
+.filter-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.top-controls {
+  grid-template-columns: minmax(280px, 1.7fr) minmax(130px, 0.8fr) minmax(140px, 0.8fr);
+}
+
+.filter-controls {
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
 }
 
 .filter-stack {
@@ -581,6 +595,12 @@ body.modal-open {
   .controls {
     grid-template-columns: 1fr;
     gap: 9px;
+    max-width: 100%;
+  }
+
+  .top-controls,
+  .filter-controls {
+    grid-template-columns: 1fr;
   }
 
   .cards,

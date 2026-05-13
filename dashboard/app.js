@@ -149,6 +149,7 @@ const elements = {
   count: document.querySelector("#property-count"),
   search: document.querySelector("#search-input"),
   status: document.querySelector("#status-filter"),
+  marketHeat: document.querySelector("#market-heat-filter"),
   sortPrimary: document.querySelector("#sort-primary"),
   sortPrimaryDirection: document.querySelector("#sort-primary-direction"),
   sortSecondary: document.querySelector("#sort-secondary"),
@@ -620,11 +621,13 @@ function activeSortFields() {
 function getFilteredProperties() {
   const query = normalizeText(elements.search.value);
   const status = elements.status.value;
+  const marketHeatFilter = elements.marketHeat.value;
 
   return properties
     .filter((property) => {
       const propertyGarageFit = getGarageFit(property);
       const listingStatus = listingStatusDisplay(property.listing_status);
+      const heat = marketHeat(property);
       const searchable = [
         property.address,
         listingStatus,
@@ -643,8 +646,9 @@ function getFilteredProperties() {
         || (status === "all" && ["For Sale", "Pending"].includes(listingStatus))
         || listingStatus === status
       );
+      const matchesMarketHeat = marketHeatFilter === "all" || String(heat.flames) === marketHeatFilter;
 
-      return matchesQuery && matchesStatus;
+      return matchesQuery && matchesStatus && matchesMarketHeat;
     })
     .sort(sortProperties);
 }
@@ -908,6 +912,7 @@ async function init() {
 
   elements.search.addEventListener("input", render);
   elements.status.addEventListener("change", render);
+  elements.marketHeat.addEventListener("change", render);
   elements.sortPrimary.addEventListener("change", render);
   elements.sortPrimaryDirection.addEventListener("change", render);
   elements.sortSecondary.addEventListener("change", render);
