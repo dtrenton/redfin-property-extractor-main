@@ -270,23 +270,23 @@ select:focus {
 }
 
 .market-heat-4 .active {
-  background: #1f6d3d;
+  background: #c7352d;
 }
 
 .market-heat-3 .active {
-  background: #d4a31f;
-}
-
-.market-heat-2 .active {
   background: #c86d1d;
 }
 
+.market-heat-2 .active {
+  background: #d4a31f;
+}
+
 .market-heat-1 .active {
-  background: #c7352d;
+  background: #e6c84f;
 }
 
 .market-heat-0 .active {
-  background: #c7352d;
+  background: #e3e9ec;
 }
 
 .market-metric,
