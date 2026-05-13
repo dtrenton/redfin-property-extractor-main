@@ -184,12 +184,19 @@ const elements = {
   basement: document.querySelector("#basement-filter"),
   fence: document.querySelector("#fence-filter"),
   flooring: document.querySelector("#flooring-filter"),
+  flooringSearch: document.querySelector("#flooring-search"),
   construction: document.querySelector("#construction-filter"),
+  constructionSearch: document.querySelector("#construction-search"),
   foundation: document.querySelector("#foundation-filter"),
+  foundationSearch: document.querySelector("#foundation-search"),
   hvac: document.querySelector("#hvac-filter"),
+  hvacSearch: document.querySelector("#hvac-search"),
   roof: document.querySelector("#roof-filter"),
+  roofSearch: document.querySelector("#roof-search"),
   water: document.querySelector("#water-filter"),
+  waterSearch: document.querySelector("#water-search"),
   appliances: document.querySelector("#appliances-filter"),
+  appliancesSearch: document.querySelector("#appliances-search"),
   sortPrimary: document.querySelector("#sort-primary"),
   sortPrimaryDirection: document.querySelector("#sort-primary-direction"),
   sortSecondary: document.querySelector("#sort-secondary"),
@@ -203,6 +210,16 @@ const elements = {
 };
 
 let activeMarketState = "Active";
+
+const advancedFilterConfigs = [
+  { key: "flooring", fields: ["flooring"] },
+  { key: "construction", fields: ["construction_materials"] },
+  { key: "foundation", fields: ["foundation_details"] },
+  { key: "hvac", fields: ["heating", "cooling"] },
+  { key: "roof", fields: ["roof"] },
+  { key: "water", fields: ["water_source"] },
+  { key: "appliances", fields: ["appliances"] },
+];
 
 function formatCurrency(value) {
   const number = parseNumber(value);
@@ -285,6 +302,48 @@ function hasDisplayValue(value) {
 
 function displayValue(value) {
   return hasDisplayValue(value) ? String(value) : "—";
+}
+
+function isPlaceholderValue(value) {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value) && !value.length) return true;
+  return [
+    "",
+    "missing",
+    "not provided",
+    "no info",
+    "does not apply",
+    "n/a",
+    "-",
+  ].includes(normalizeText(value).trim());
+}
+
+function splitAttributeValues(value) {
+  if (isPlaceholderValue(value)) return [];
+  return String(value)
+    .split(/[,;/|]+/)
+    .map((item) => item.trim())
+    .filter((item) => !isPlaceholderValue(item));
+}
+
+function normalizedAttributeKey(value) {
+  return normalizeText(value).replace(/\s+/g, " ").trim();
+}
+
+function selectedValues(select) {
+  return [...select.selectedOptions].map((option) => option.value);
+}
+
+function propertyAttributeValues(property, fields) {
+  return fields.flatMap((field) => splitAttributeValues(property[field]));
+}
+
+function matchesAdvancedFilter(property, config) {
+  const select = elements[config.key];
+  const selected = selectedValues(select);
+  if (!selected.length) return true;
+  const propertyValues = propertyAttributeValues(property, config.fields).map(normalizedAttributeKey);
+  return selected.some((value) => propertyValues.includes(value));
 }
 
 function displayCurrency(value) {
@@ -760,6 +819,55 @@ function populateSortOptions(data = []) {
   elements.sortTertiary.value = "current_dom";
 }
 
+function collectAdvancedOptions(data, fields) {
+  const options = new Map();
+  data.forEach((property) => {
+    propertyAttributeValues(property, fields).forEach((value) => {
+      const key = normalizedAttributeKey(value);
+      if (!key || options.has(key)) return;
+      options.set(key, value);
+    });
+  });
+  return [...options.entries()]
+    .sort((left, right) => left[1].localeCompare(right[1], undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }))
+    .map(([value, label]) => ({ value, label }));
+}
+
+function filterAdvancedOptions(config) {
+  const select = elements[config.key];
+  const search = elements[`${config.key}Search`];
+  const query = normalizeText(search.value).trim();
+  [...select.options].forEach((option) => {
+    option.hidden = Boolean(query) && !normalizeText(option.textContent).includes(query);
+  });
+}
+
+function populateAdvancedFilters(data = []) {
+  advancedFilterConfigs.forEach((config) => {
+    const select = elements[config.key];
+    const search = elements[`${config.key}Search`];
+    const wrapper = document.querySelector(`[data-advanced-filter="${config.key}"]`);
+    const options = collectAdvancedOptions(data, config.fields);
+
+    select.replaceChildren();
+    search.value = "";
+    options.forEach(({ value, label }) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    });
+
+    wrapper.hidden = options.length === 0;
+    search.hidden = options.length <= 10;
+    select.size = Math.min(Math.max(options.length, 2), 6);
+    filterAdvancedOptions(config);
+  });
+}
+
 function activeSortFields() {
   return [
     { field: elements.sortPrimary.value, direction: elements.sortPrimaryDirection.value },
@@ -822,14 +930,7 @@ function getFilteredProperties() {
       const matchesFence = elements.fence.value === "all"
         || (elements.fence.value === "yes" && isPositiveFeature(property.fence))
         || (elements.fence.value === "no" && (fenceValue.includes("no") || !hasDisplayValue(property.fence)));
-      const matchesFlooring = !elements.flooring.value || normalizeText(property.flooring).includes(normalizeText(elements.flooring.value));
-      const matchesConstruction = !elements.construction.value || normalizeText(property.construction_materials).includes(normalizeText(elements.construction.value));
-      const matchesFoundation = !elements.foundation.value || normalizeText(property.foundation_details).includes(normalizeText(elements.foundation.value));
-      const hvacText = `${normalizeText(property.heating)} ${normalizeText(property.cooling)}`;
-      const matchesHvac = !elements.hvac.value || hvacText.includes(normalizeText(elements.hvac.value));
-      const matchesRoof = !elements.roof.value || normalizeText(property.roof).includes(normalizeText(elements.roof.value));
-      const matchesWater = !elements.water.value || normalizeText(property.water_source).includes(normalizeText(elements.water.value));
-      const matchesAppliances = !elements.appliances.value || normalizeText(property.appliances).includes(normalizeText(elements.appliances.value));
+      const matchesAdvanced = advancedFilterConfigs.every((config) => matchesAdvancedFilter(property, config));
 
       return matchesQuery
         && matchesStatus
@@ -841,13 +942,7 @@ function getFilteredProperties() {
         && matchesGarage
         && matchesBasement
         && matchesFence
-        && matchesFlooring
-        && matchesConstruction
-        && matchesFoundation
-        && matchesHvac
-        && matchesRoof
-        && matchesWater
-        && matchesAppliances;
+        && matchesAdvanced;
     })
     .sort(sortProperties);
 }
@@ -1096,9 +1191,11 @@ async function init() {
   try {
     properties = await loadData();
     populateSortOptions(properties);
+    populateAdvancedFilters(properties);
   } catch (error) {
     console.error(error);
     populateSortOptions();
+    populateAdvancedFilters();
     showDashboardError();
   }
 
@@ -1111,13 +1208,12 @@ async function init() {
   elements.garage.addEventListener("change", render);
   elements.basement.addEventListener("change", render);
   elements.fence.addEventListener("change", render);
-  elements.flooring.addEventListener("input", render);
-  elements.construction.addEventListener("input", render);
-  elements.foundation.addEventListener("input", render);
-  elements.hvac.addEventListener("input", render);
-  elements.roof.addEventListener("input", render);
-  elements.water.addEventListener("input", render);
-  elements.appliances.addEventListener("input", render);
+  advancedFilterConfigs.forEach((config) => {
+    elements[config.key].addEventListener("change", render);
+    elements[`${config.key}Search`].addEventListener("input", () => {
+      filterAdvancedOptions(config);
+    });
+  });
   elements.marketTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
       activeMarketState = tab.dataset.marketState;

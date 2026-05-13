@@ -154,6 +154,25 @@ main {
   padding: 0 12px 12px;
 }
 
+.advanced-filter[hidden] {
+  display: none;
+}
+
+.advanced-filter select[multiple] {
+  min-height: 76px;
+  max-height: 150px;
+  padding: 6px;
+  overflow: auto;
+}
+
+.advanced-filter option {
+  padding: 3px 5px;
+}
+
+.advanced-search[hidden] {
+  display: none;
+}
+
 .filter-stack {
   display: grid;
   gap: 6px;
