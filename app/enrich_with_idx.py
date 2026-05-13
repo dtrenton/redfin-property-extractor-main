@@ -3,6 +3,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlparse
 
 try:
     from extract_idx_page import extract_idx_page
@@ -30,6 +31,7 @@ except ModuleNotFoundError:
 
 SCORED_PROPERTY_FILE = Path("outputs/scored_property.json")
 EXTRACTION_METADATA_FILE = Path("outputs/extraction_metadata.json")
+RAW_TEXT_FILE = Path("outputs/raw_text.txt")
 DEFAULT_IDX_BASE_URL = "https://rase-inc.idxbroker.com/idx/details/listing/c239"
 IDX_UNAVAILABLE_WARNING = "IDX printable page not yet available; continuing with Redfin PDF data."
 IDX_ONLY_FIELDS = [
@@ -71,27 +73,86 @@ def save_json(path, data):
         json.dump(data, f, indent=2)
 
 
-def extract_mls_number_from_value(value):
+def clean_mls_number(value):
     if not value:
         return None
 
+    cleaned = str(value).strip().strip(".,);]}")
+    if re.fullmatch(r"[A-Za-z0-9-]*\d[A-Za-z0-9-]*", cleaned):
+        return cleaned
+    return None
+
+
+def extract_mls_number_from_text(value):
+    if not value:
+        return None
+
+    text = unquote(str(value))
+
     patterns = [
-        r"\bMLS#\s*([A-Za-z0-9-]+)",
-        r"Source:\s*REALTOR(?:®|\(R\))?\s+Association[^#]*#\s*([A-Za-z0-9-]+)",
+        r"Source:\s*REALTOR(?:®|\(R\))?\s+Association[^#]*#\s*([A-Za-z0-9-]*\d[A-Za-z0-9-]*)",
+        r"\bMLS\s*#?\s*([A-Za-z0-9-]*\d[A-Za-z0-9-]*)",
     ]
     for pattern in patterns:
-        match = re.search(pattern, str(value), re.IGNORECASE)
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            return match.group(1)
+            return clean_mls_number(match.group(1))
+    return None
+
+
+def extract_mls_number_from_listing_url(value):
+    if not value:
+        return None
+
+    text = unquote(str(value))
+    parsed = urlparse(text)
+    for key, query_value in parse_qsl(parsed.query, keep_blank_values=True):
+        normalized_key = key.lower().replace("_", "").replace("-", "")
+        if normalized_key in {"mls", "mlsid", "mlsnumber"}:
+            mls_number = clean_mls_number(query_value)
+            if mls_number:
+                return mls_number
+
+    for pattern in [
+        r"(?:^|[/_-])MLS[-_#\s]+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)",
+        r"\bMLS\s*#\s*([A-Za-z0-9-]*\d[A-Za-z0-9-]*)",
+    ]:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return clean_mls_number(match.group(1))
+
+    return None
+
+
+def extract_mls_number_from_value(value):
+    return extract_mls_number_from_text(value) or extract_mls_number_from_listing_url(value)
+
+
+def extract_mls_number_from_raw_pdf_text():
+    if not RAW_TEXT_FILE.exists():
+        return None
+    try:
+        return extract_mls_number_from_text(RAW_TEXT_FILE.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
+def first_mls_number(*values):
+    for value in values:
+        mls_number = clean_mls_number(value)
+        if mls_number and not is_fillable_value(mls_number):
+            return mls_number
     return None
 
 
 def resolve_mls_number(scored_property, metadata):
     return (
-        scored_property.get("mls_number")
-        or metadata.get("mls_number")
-        or extract_mls_number_from_value(scored_property.get("source_pdf"))
-        or extract_mls_number_from_value(metadata.get("source_pdf"))
+        first_mls_number(scored_property.get("mls_number"), metadata.get("mls_number"))
+        or extract_mls_number_from_text(scored_property.get("source_pdf"))
+        or extract_mls_number_from_text(metadata.get("source_pdf"))
+        or extract_mls_number_from_raw_pdf_text()
+        or extract_mls_number_from_listing_url(scored_property.get("listing_url"))
+        or extract_mls_number_from_listing_url(metadata.get("listing_url"))
     )
 
 

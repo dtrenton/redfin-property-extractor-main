@@ -1,8 +1,30 @@
 import json
 import re
+import sys
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
+
+try:
+    from enrich_with_idx import (
+        IDX_UNAVAILABLE_WARNING,
+        extract_mls_number_from_listing_url,
+        extract_mls_number_from_text,
+        idx_printable_unavailable,
+        idx_url_for_mls,
+        normalize_listing_status,
+    )
+    from extract_idx_page import extract_idx_page
+except ModuleNotFoundError:
+    from app.enrich_with_idx import (
+        IDX_UNAVAILABLE_WARNING,
+        extract_mls_number_from_listing_url,
+        extract_mls_number_from_text,
+        idx_printable_unavailable,
+        idx_url_for_mls,
+        normalize_listing_status,
+    )
+    from app.extract_idx_page import extract_idx_page
 
 SHEET_ID = "1ZCf2qBp0TJ4iy2oi58geDf39cFCG6QTpB7rW2i3nHzg"
 CREDENTIALS_FILE = "credentials/service_account.json"
@@ -60,6 +82,24 @@ IDX_EXPORT_HEADERS = [
     "price_reduction_pct",
 ]
 
+LIVE_REFRESH_HEADERS = [
+    "mls_number",
+    "idx_url",
+    "current_status",
+    "last_checked",
+    "refresh_success",
+    "refresh_notes",
+]
+
+AUTO_PAYLOAD_HEADER_EXCLUDE = {
+    "idx_details",
+    "rooms",
+    "idx_enrichment_errors",
+    "idx_enrichment_warnings",
+    "idx_enriched_fields",
+    "validation_warnings",
+}
+
 MARKET_TIMING_HEADERS = {
     "days_on_redfin",
     "days_on_market",
@@ -104,6 +144,12 @@ PRICE_REDUCTION_HEADERS = {
     "price_reduction_date",
     "price_reduction_amount",
     "price_reduction_pct",
+}
+
+BLANK_IF_MISSING_HEADERS = {
+    "last_checked",
+    "refresh_success",
+    "refresh_notes",
 }
 
 REMOVED_EXPORT_HEADERS = {
@@ -250,6 +296,8 @@ def garage_fit_value(data):
 
 
 def placeholder_for_header(header, data):
+    if header in BLANK_IF_MISSING_HEADERS:
+        return ""
     if header == "garage_spaces" and garage_is_no(data):
         return 0
     if header == "garage_type" and garage_is_no(data):
@@ -311,6 +359,9 @@ def value_for_header(data, header):
     if header == "listing_status" and is_missing_export_value(value):
         value = "For Sale"
 
+    if header == "current_status" and is_missing_export_value(value):
+        value = data.get("listing_status") or "For Sale"
+
     if header == "garage_fit" and is_missing_export_value(value):
         value = garage_fit_value(data)
 
@@ -351,8 +402,29 @@ def build_row(data, header_row):
     return [value_for_header(data, header) for header in header_row]
 
 
-def desired_headers():
-    return HEADERS + IDX_EXPORT_HEADERS
+def unique_headers(headers):
+    seen = set()
+    unique = []
+    for header in headers:
+        if header and header not in seen:
+            unique.append(header)
+            seen.add(header)
+    return unique
+
+
+def payload_headers(data):
+    if not data:
+        return []
+    return [
+        header
+        for header in data.keys()
+        if header not in AUTO_PAYLOAD_HEADER_EXCLUDE
+        and header not in REMOVED_EXPORT_HEADERS
+    ]
+
+
+def desired_headers(data=None):
+    return unique_headers(HEADERS + IDX_EXPORT_HEADERS + LIVE_REFRESH_HEADERS + payload_headers(data))
 
 
 def remove_legacy_columns(sheet, existing):
@@ -375,10 +447,11 @@ def remove_legacy_columns(sheet, existing):
     return sheet.get_all_values()
 
 
-def ensure_headers(sheet):
+def ensure_headers(sheet, data=None, remove_legacy=True):
     existing = sheet.get_all_values()
-    existing = remove_legacy_columns(sheet, existing)
-    expected_headers = desired_headers()
+    if remove_legacy:
+        existing = remove_legacy_columns(sheet, existing)
+    expected_headers = desired_headers(data)
 
     if not existing:
         header_row = expected_headers
@@ -390,7 +463,7 @@ def ensure_headers(sheet):
     extra_headers = [
         header for header in header_row if header and header not in expected_headers
     ]
-    synced_header_row = expected_headers + extra_headers
+    synced_header_row = unique_headers(expected_headers + extra_headers)
 
     if header_row != synced_header_row:
         end_col = column_letter(len(synced_header_row))
@@ -401,6 +474,138 @@ def ensure_headers(sheet):
     return existing
 
 
+def auth_sheet():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SHEET_ID).sheet1
+
+
+def row_dict_from_values(header_row, values):
+    return {
+        header: values[index] if index < len(values) else ""
+        for index, header in enumerate(header_row)
+    }
+
+
+def existing_cell(row_data, *headers):
+    for header in headers:
+        value = row_data.get(header)
+        if not is_missing_export_value(value):
+            return value
+    return None
+
+
+def derive_mls_from_existing_row(row_data):
+    return (
+        existing_cell(row_data, "mls_number")
+        or extract_mls_number_from_text(existing_cell(row_data, "source_pdf"))
+        or extract_mls_number_from_listing_url(existing_cell(row_data, "listing_url"))
+    )
+
+
+def derive_idx_url_from_existing_row(row_data):
+    existing_idx_url = existing_cell(row_data, "idx_url")
+    if existing_idx_url:
+        return existing_idx_url, existing_cell(row_data, "mls_number")
+
+    mls_number = derive_mls_from_existing_row(row_data)
+    if not mls_number:
+        return None, None
+    return idx_url_for_mls(mls_number), mls_number
+
+
+def refresh_row_payload(row_data):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    payload = {
+        "last_checked": now,
+        "refresh_success": "No",
+        "refresh_notes": "",
+    }
+
+    idx_url, mls_number = derive_idx_url_from_existing_row(row_data)
+    if mls_number:
+        payload["mls_number"] = mls_number
+    if idx_url:
+        payload["idx_url"] = idx_url
+    else:
+        payload["refresh_notes"] = "MLS number unavailable; idx_url could not be derived."
+        return payload
+
+    try:
+        idx_data = extract_idx_page(idx_url)
+    except Exception as exc:
+        payload["refresh_notes"] = f"IDX refresh failed: {exc}"
+        return payload
+
+    if idx_printable_unavailable(idx_data):
+        payload["refresh_notes"] = IDX_UNAVAILABLE_WARNING
+        payload["current_status"] = existing_cell(row_data, "current_status", "listing_status") or ""
+        return payload
+
+    errors = idx_data.get("debug", {}).get("errors", [])
+    if errors:
+        payload["refresh_notes"] = "; ".join(str(error) for error in errors)
+        return payload
+
+    current_status = normalize_listing_status(idx_data.get("mls_status"))
+    if current_status:
+        payload["current_status"] = current_status
+    elif existing_cell(row_data, "listing_status"):
+        payload["current_status"] = existing_cell(row_data, "listing_status")
+
+    payload["refresh_success"] = "Yes"
+    payload["refresh_notes"] = "IDX refresh completed."
+    return payload
+
+
+def set_row_values(existing_values, header_row, updates):
+    row = list(existing_values)
+    if len(row) < len(header_row):
+        row.extend([""] * (len(header_row) - len(row)))
+
+    for header, value in updates.items():
+        if header in header_row:
+            row[header_row.index(header)] = value
+    return row
+
+
+def refresh_existing_rows():
+    sheet = auth_sheet()
+    existing = ensure_headers(
+        sheet,
+        {"idx_url": "", "current_status": "", "last_checked": "", "refresh_success": "", "refresh_notes": ""},
+        remove_legacy=False,
+    )
+    if len(existing) <= 1:
+        print("No existing property rows to refresh")
+        return
+
+    header_row = existing[0]
+    refreshed = 0
+    failed = 0
+
+    for row_number, values in enumerate(existing[1:], start=2):
+        row_data = row_dict_from_values(header_row, values)
+        updates = refresh_row_payload(row_data)
+        next_row = set_row_values(values, header_row, updates)
+        end_col = column_letter(len(header_row))
+        sheet.update(f"A{row_number}:{end_col}{row_number}", [next_row])
+
+        if updates.get("refresh_success") == "Yes":
+            refreshed += 1
+        else:
+            failed += 1
+
+        identifier = row_data.get("address") or row_data.get("listing_url") or f"row {row_number}"
+        print(
+            f"Refreshed {identifier}: {updates.get('refresh_success')} - "
+            f"{updates.get('refresh_notes')}"
+        )
+
+    print(f"Refresh summary: {refreshed} succeeded, {failed} need attention")
+
+
 def main():
     # Load JSON
     with open(INPUT_FILE, "r") as f:
@@ -408,14 +613,9 @@ def main():
 
     print(f"Listing URL: {data.get('listing_url', 'MISSING')}")
 
-    # Auth
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
-    client = gspread.authorize(creds)
+    sheet = auth_sheet()
 
-    sheet = client.open_by_key(SHEET_ID).sheet1
-
-    existing = ensure_headers(sheet)
+    existing = ensure_headers(sheet, data)
     header_row = existing[0]
     row = build_row(data, header_row)
     listing_url_col = header_row.index("listing_url") + 1 if "listing_url" in header_row else None
@@ -442,4 +642,7 @@ def main():
         print("New row added")
 
 if __name__ == "__main__":
-    main()
+    if "--refresh-existing-rows" in sys.argv or "refresh_existing_rows" in sys.argv:
+        refresh_existing_rows()
+    else:
+        main()
