@@ -94,10 +94,13 @@ LIVE_REFRESH_HEADERS = [
     "current_status",
     "last_checked",
     "refresh_success",
+    "data_completeness_score",
     "refresh_notes",
 ]
 
 REFRESH_NOTES_HEADER = "refresh_notes"
+APPROVED_APPEND_ONLY_HEADER_ORDER = LIVE_REFRESH_HEADERS
+APPROVED_APPEND_ONLY_HEADERS = set(APPROVED_APPEND_ONLY_HEADER_ORDER)
 
 UNWANTED_LIVE_REFRESH_HEADERS = {
     "market_interest_notes",
@@ -404,6 +407,20 @@ def build_row(data, header_row):
     return [value_for_header(data, header) for header in header_row]
 
 
+def build_update_row(existing_values, header_row, data):
+    row = list(existing_values)
+    if len(row) < len(header_row):
+        row.extend([""] * (len(header_row) - len(row)))
+
+    writable_headers = set(desired_headers(data)) | set(data.keys())
+    writable_headers -= REMOVED_EXPORT_HEADERS
+
+    for index, header in enumerate(header_row):
+        if header in writable_headers:
+            row[index] = value_for_header(data, header)
+    return row
+
+
 def unique_headers(headers):
     seen = set()
     unique = []
@@ -420,51 +437,41 @@ def payload_headers(data):
     return [
         header
         for header in data.keys()
-        if header not in AUTO_PAYLOAD_HEADER_EXCLUDE
+        if header in APPROVED_APPEND_ONLY_HEADERS
+        and header not in AUTO_PAYLOAD_HEADER_EXCLUDE
         and header not in REMOVED_EXPORT_HEADERS
     ]
 
 
 def desired_headers(data=None):
-    headers = unique_headers(HEADERS + IDX_EXPORT_HEADERS + LIVE_REFRESH_HEADERS + payload_headers(data))
-    headers = [header for header in headers if header != REFRESH_NOTES_HEADER]
-    headers.append(REFRESH_NOTES_HEADER)
-    return headers
+    return unique_headers(HEADERS + IDX_EXPORT_HEADERS + LIVE_REFRESH_HEADERS + payload_headers(data))
 
 
-def remove_columns_by_header(sheet, existing, headers_to_remove, label):
-    if not existing:
+def validate_append_only_headers(old_headers, new_headers):
+    if new_headers[: len(old_headers)] != old_headers:
+        raise RuntimeError(
+            "Header safety check failed: existing headers would be renamed, removed, or moved. "
+            "Aborting without writing to Google Sheets."
+        )
+
+
+def append_missing_headers_only(sheet, existing, missing_headers):
+    if not missing_headers:
         return existing
 
-    header_row = existing[0]
-    indexes_to_remove = [
-        index for index, header in enumerate(header_row) if header in headers_to_remove
-    ]
-
-    if not indexes_to_remove:
-        return existing
-
-    for index in reversed(indexes_to_remove):
-        sheet.delete_columns(index + 1)
-
-    removed_headers = [header_row[index] for index in indexes_to_remove]
-    print(f"Removed {label}: {', '.join(removed_headers)}")
-    return sheet.get_all_values()
+    old_headers = existing[0]
+    new_headers = old_headers + missing_headers
+    validate_append_only_headers(old_headers, new_headers)
+    start_col = column_letter(len(old_headers) + 1)
+    end_col = column_letter(len(new_headers))
+    sheet.update(f"{start_col}1:{end_col}1", [missing_headers])
+    print(f"Headers appended: {', '.join(missing_headers)}")
+    existing[0] = new_headers
+    return existing
 
 
-def remove_legacy_columns(sheet, existing):
-    return remove_columns_by_header(
-        sheet,
-        existing,
-        REMOVED_EXPORT_HEADERS,
-        "unwanted live-refresh columns",
-    )
-
-
-def ensure_headers(sheet, data=None, remove_legacy=True):
+def ensure_headers(sheet, data=None, remove_legacy=False):
     existing = sheet.get_all_values()
-    if remove_legacy:
-        existing = remove_legacy_columns(sheet, existing)
     expected_headers = desired_headers(data)
 
     if not existing:
@@ -474,20 +481,11 @@ def ensure_headers(sheet, data=None, remove_legacy=True):
         return [header_row]
 
     header_row = existing[0]
-    extra_headers = [
-        header for header in header_row if header and header not in expected_headers
+    missing_headers = [
+        header for header in APPROVED_APPEND_ONLY_HEADER_ORDER
+        if header in expected_headers and header not in header_row
     ]
-    synced_header_row = unique_headers(expected_headers + extra_headers)
-    synced_header_row = [header for header in synced_header_row if header != REFRESH_NOTES_HEADER]
-    synced_header_row.append(REFRESH_NOTES_HEADER)
-
-    if header_row != synced_header_row:
-        end_col = column_letter(len(synced_header_row))
-        sheet.update(f"A1:{end_col}1", [synced_header_row])
-        print("Headers synchronized")
-        existing[0] = synced_header_row
-
-    return existing
+    return append_missing_headers_only(sheet, existing, missing_headers)
 
 
 def auth_sheet():
@@ -597,17 +595,10 @@ def find_existing_row_number(data, listing_urls, source_pdfs, addresses):
 
 
 def cleanup_live_refresh_columns():
-    sheet = auth_sheet()
-    existing = sheet.get_all_values()
-    existing = remove_columns_by_header(
-        sheet,
-        existing,
-        UNWANTED_LIVE_REFRESH_HEADERS,
-        "unwanted live-refresh columns",
+    print(
+        "Automatic column deletion is disabled. "
+        "No Google Sheet columns were removed or reordered."
     )
-    if existing:
-        ensure_headers(sheet, remove_legacy=False)
-    print("Live-refresh schema cleanup complete")
 
 
 def refresh_existing_rows():
@@ -657,7 +648,6 @@ def main():
 
     existing = ensure_headers(sheet, data)
     header_row = existing[0]
-    row = build_row(data, header_row)
     listing_url_col = header_row.index("listing_url") + 1 if "listing_url" in header_row else None
     source_pdf_col = header_row.index("source_pdf") + 1 if "source_pdf" in header_row else None
     address_col = header_row.index("address") + 1 if "address" in header_row else 1
@@ -674,9 +664,12 @@ def main():
 
     if row_number:
         end_col = column_letter(len(header_row))
+        existing_values = existing[row_number - 1] if row_number - 1 < len(existing) else []
+        row = build_update_row(existing_values, header_row, data)
         sheet.update(f"A{row_number}:{end_col}{row_number}", [row])
         print(f"Existing row updated by {match_type}")
     else:
+        row = build_row(data, header_row)
         sheet.append_row(row)
         print("New row added")
 
