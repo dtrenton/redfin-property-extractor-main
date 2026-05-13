@@ -92,9 +92,17 @@ LIVE_REFRESH_HEADERS = [
     "mls_number",
     "idx_url",
     "current_status",
+    "current_dom",
+    "current_price",
     "last_checked",
     "refresh_success",
     "data_completeness_score",
+    "recent_price_drop",
+    "price_drop_pct",
+    "back_on_market",
+    "pending_speed",
+    "live_market_interest_score",
+    "live_market_interest_flags",
     "refresh_notes",
 ]
 

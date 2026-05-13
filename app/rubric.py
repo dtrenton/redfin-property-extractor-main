@@ -217,6 +217,12 @@ def missing_market_interest_notes(data):
 def numeric_or_none(value):
     return clean_number(value)
 
+def int_or_default(value, default=0):
+    number = clean_number(value)
+    if number is None:
+        return default
+    return int(number)
+
 def current_status_value(data):
     return data.get("current_status") or data.get("listing_status") or "For Sale"
 
@@ -642,6 +648,9 @@ def update_buyer_leverage(data):
     buyer_leverage_flags = []
     status = current_status_value(data)
     dom = current_dom_value(data)
+    price_change_count = int_or_default(data.get("price_change_count_1y"))
+    listing_removed_count = int_or_default(data.get("listing_removed_count_1y"))
+    listed_count = int_or_default(data.get("listed_count_1y"))
 
     if status == "For Sale":
         if dom is not None and dom >= 60:
@@ -660,18 +669,18 @@ def update_buyer_leverage(data):
         buyer_leverage_score += 1
         buyer_leverage_flags.append("Recent price drop")
 
-    if has_value(data, "price_change_count_1y") and data["price_change_count_1y"] >= 2:
+    if price_change_count >= 2:
         buyer_leverage_score += 1
         buyer_leverage_flags.append("Multiple price changes in last 365 days")
-    elif has_value(data, "price_change_count_1y") and data["price_change_count_1y"] == 1:
+    elif price_change_count == 1:
         buyer_leverage_score += 0.5
         buyer_leverage_flags.append("One price change in last 365 days")
 
-    if has_value(data, "listing_removed_count_1y") and data["listing_removed_count_1y"] >= 1:
+    if listing_removed_count >= 1:
         buyer_leverage_score += 1
         buyer_leverage_flags.append("Listing removed in last 365 days")
 
-    if has_value(data, "listed_count_1y") and data["listed_count_1y"] > 1:
+    if listed_count > 1:
         buyer_leverage_score += 1
         buyer_leverage_flags.append("Multiple listings in last 365 days")
 
