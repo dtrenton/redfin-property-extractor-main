@@ -669,15 +669,30 @@ function evidenceChip(label, value, className = "") {
   return `<span class="market-metric ${className}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></span>`;
 }
 
+function domSignalClass(property) {
+  const dom = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+  if (dom === null) return "signal-neutral";
+  if (dom <= 7) return "signal-active";
+  if (dom > 21) return "signal-warning";
+  return "signal-neutral";
+}
+
+function cutsSignalClass(property) {
+  const cuts = priceCutCount(property);
+  if (cuts >= 2) return "signal-danger";
+  if (cuts === 1) return "signal-warning";
+  return "signal-neutral";
+}
+
 function activeMarketStrip(property) {
   const chips = [
-    evidenceChip("Current DOM", compactDomDisplay(property)),
+    evidenceChip("Current DOM", compactDomDisplay(property), domSignalClass(property)),
   ];
   const drop = priceDropDisplay(property);
-  if (drop) chips.push(evidenceChip("Price Drop", drop, "price-drop"));
-  chips.push(evidenceChip("Cuts", `${formatNumber(priceCutCount(property))}`));
+  chips.push(evidenceChip("Cuts", `${formatNumber(priceCutCount(property))}`, cutsSignalClass(property)));
+  if (drop) chips.push(evidenceChip("Price Drop", drop, "price-drop signal-danger"));
   const relisted = backOnMarketDisplay(property);
-  if (relisted) chips.push(evidenceChip("Relisted", relisted, normalizeText(relisted).includes("back on market") ? "back-market" : ""));
+  if (relisted) chips.push(evidenceChip("Relisted", relisted, "back-market signal-warning"));
   return chips.join("");
 }
 
@@ -709,12 +724,11 @@ function marketEvidenceStrip(property) {
 
 function sortChipValue(property) {
   const sorts = activeSortFields();
-  if (!sorts.length) return "Filtered by: none";
-  return `Filtered by: ${sorts.map(({ field, direction }) => {
-    const value = field === "garage_fit" ? getGarageFit(property) : property[field];
+  if (!sorts.length) return "<span>Sort: none</span>";
+  return sorts.map(({ field, direction }, index) => {
     const directionLabel = direction === "desc" ? "↓" : "↑";
-    return `${columnLabel(field)} (${directionLabel}) = ${displayValue(value)}`;
-  }).join(" | ")}`;
+    return `<span>Sort ${index + 1}: <strong>${escapeHtml(columnLabel(field))} ${directionLabel}</strong></span>`;
+  }).join("");
 }
 
 function parseCsv(text) {
@@ -1112,33 +1126,35 @@ function createCard(property) {
     : `<span class="open-link disabled" aria-disabled="true">Open Listing</span>`;
 
   card.innerHTML = `
-    <div class="card-main-row">
-      <div class="title-block">
-        <h2 class="address" title="${escapeHtml(property.address || "Unknown address")}">${escapeHtml(compactAddress(property.address))}</h2>
-        <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
+    <div class="card-grid">
+      <div class="card-left">
+        <div class="title-block">
+          <h2 class="address" title="${escapeHtml(property.address || "Unknown address")}">${escapeHtml(compactAddress(property.address))}</h2>
+          <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
+        </div>
+        <div class="primary-metrics">
+          <span><strong>${displayCurrency(currentPrice(property))}</strong><small>Price</small></span>
+          <span><strong>${displayPricePerSqft(property.price_per_sqft)}</strong><small>Price/Sq Ft</small></span>
+          <span><strong>${escapeHtml(bedroomsBathsDisplay(property))}</strong><small>Beds / Baths</small></span>
+          <span><strong>${displayNumber(property.sq_ft)}</strong><small>Sq Ft</small></span>
+          <span><strong>${escapeHtml(lotDisplay(property))}</strong><small>Lot</small></span>
+        </div>
       </div>
-      <div class="primary-metrics">
-        <span><strong>${displayCurrency(currentPrice(property))}</strong><small>Price</small></span>
-        <span><strong>${displayPricePerSqft(property.price_per_sqft)}</strong><small>$/Sq Ft</small></span>
-        <span><strong>${escapeHtml(bedroomsBathsDisplay(property))}</strong><small>Beds / Baths</small></span>
-        <span><strong>${displayNumber(property.sq_ft)}</strong><small>Sq Ft</small></span>
-        <span><strong>${escapeHtml(lotDisplay(property))}</strong><small>Lot</small></span>
-        <span><strong>${escapeHtml(listingDateDisplay(property))}</strong><small>Added</small></span>
-      </div>
-    </div>
 
-    <div class="market-row">
-      ${marketEvidenceStrip(property)}
-    </div>
-
-    ${chips.length ? `
-      <div class="features-row">
-        ${chips.map(renderFeatureChip).join("")}
+      <div class="market-row">
+        ${marketEvidenceStrip(property)}
       </div>
-    ` : ""}
+
+      ${chips.length ? `
+        <div class="features-row">
+          ${chips.map(renderFeatureChip).join("")}
+        </div>
+      ` : "<div class=\"features-row empty-features\"></div>"}
+    </div>
 
     <div class="card-footer">
-      <span class="sort-chip">${escapeHtml(sortChipValue(property))}</span>
+      <div class="sort-chip">${sortChipValue(property)}</div>
+      <span class="last-checked">Last checked: ${escapeHtml(displayValue(property.last_checked))}</span>
       <div class="action-buttons">
         <button class="details-button" type="button">Details</button>
         ${listingLink}
