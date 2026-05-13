@@ -45,11 +45,13 @@ def load_json(path):
 
 def property_summary(data=None):
     data = data or {}
+    idx_warnings = data.get("idx_enrichment_warnings") or []
     return {
         "address": data.get("address") or MISSING,
         "listing_url": data.get("listing_url") or MISSING,
         "image_folder": data.get("image_folder") or MISSING,
         "final_decision": data.get("final_decision") or MISSING,
+        "idx_warning": idx_warnings[0] if idx_warnings else "",
     }
 
 
@@ -59,6 +61,8 @@ def print_property_summary(pdf_name, summary, status, message=None):
     print(f"  listing_url: {summary['listing_url']}")
     print(f"  image_folder: {summary['image_folder']}")
     print(f"  final_decision: {summary['final_decision']}")
+    if summary.get("idx_warning"):
+        print(f"  warning: {summary['idx_warning']}")
     if message:
         print(f"  details: {message}")
 

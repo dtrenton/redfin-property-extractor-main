@@ -724,6 +724,7 @@ def fetch_printable_html(printable_url, result):
             },
             timeout=30,
         )
+        result["debug"]["http_status_code"] = response.status_code
         response.raise_for_status()
         return response.text
     except requests.RequestException as exc:

@@ -31,6 +31,30 @@ except ModuleNotFoundError:
 SCORED_PROPERTY_FILE = Path("outputs/scored_property.json")
 EXTRACTION_METADATA_FILE = Path("outputs/extraction_metadata.json")
 DEFAULT_IDX_BASE_URL = "https://rase-inc.idxbroker.com/idx/details/listing/c239"
+IDX_UNAVAILABLE_WARNING = "IDX printable page not yet available; continuing with Redfin PDF data."
+IDX_ONLY_FIELDS = [
+    "construction_materials",
+    "foundation_details",
+    "roof",
+    "sewer",
+    "water_source",
+    "appliances",
+    "cooling",
+    "heating",
+    "interior_features",
+    "rooms",
+    "finished_basement_pct",
+    "acres",
+    "lot_size_square_feet",
+    "listing_agent_name",
+    "listing_brokerage",
+    "listing_agent_email",
+    "nar_contact_info",
+    "price_before_reduction",
+    "price_reduction_date",
+    "price_reduction_amount",
+    "price_reduction_pct",
+]
 
 
 def load_json(path):
@@ -257,6 +281,45 @@ def add_sqft_warning(enriched, warning):
         enriched["validation_warnings"].append(warning)
 
 
+def add_idx_warning(enriched, warning):
+    enriched.setdefault("idx_enrichment_warnings", [])
+    if warning not in enriched["idx_enrichment_warnings"]:
+        enriched["idx_enrichment_warnings"].append(warning)
+
+
+def idx_printable_unavailable(idx_data):
+    debug = idx_data.get("debug", {})
+    errors = debug.get("errors", [])
+    sections = idx_data.get("sections", {})
+    missing_required = debug.get("missing_required_sections", [])
+    status_code = debug.get("http_status_code")
+
+    if status_code == 404:
+        return True
+    if any("404 Client Error" in str(error) for error in errors):
+        return True
+    if not sections and missing_required:
+        return True
+    return False
+
+
+def apply_idx_unavailable_fallback(enriched):
+    enriched["idx_enrichment_status"] = "unavailable"
+    enriched["idx_enriched_fields"] = []
+    add_idx_warning(enriched, IDX_UNAVAILABLE_WARNING)
+
+    for field in IDX_ONLY_FIELDS:
+        if is_fillable_value(enriched.get(field)):
+            enriched[field] = MISSING
+
+    update_extraction_quality(enriched)
+    update_property_risk(enriched)
+    update_market_activity(enriched)
+    update_final_decision(enriched)
+    update_strategy_category(enriched)
+    return enriched
+
+
 def apply_sqft_validation(enriched, idx_data):
     idx_sqft, idx_sqft_source = idx_living_sqft(idx_data)
     lot_size_square_feet, acres, dimensions_product, acreage_sqft = idx_lot_metrics(idx_data)
@@ -463,6 +526,11 @@ def merge_idx_details(scored_property, idx_data, idx_url, mls_number):
     enriched["idx_details"] = idx_data
 
     errors = idx_data.get("debug", {}).get("errors", [])
+    if idx_printable_unavailable(idx_data):
+        if errors:
+            enriched["idx_enrichment_errors"] = errors
+        return apply_idx_unavailable_fallback(enriched)
+
     if errors:
         enriched["idx_enrichment_status"] = "failed"
         enriched["idx_enrichment_errors"] = errors
@@ -515,6 +583,8 @@ def enrich_scored_property():
     print(f"IDX MLS number: {mls_number}")
     print(f"IDX URL: {idx_url}")
     print(f"IDX enrichment status: {enriched.get('idx_enrichment_status')}")
+    for warning in enriched.get("idx_enrichment_warnings", []):
+        print(f"IDX warning: {warning}")
     print(f"IDX enriched fields: {', '.join(enriched.get('idx_enriched_fields', [])) or 'none'}")
 
     return enriched
@@ -527,7 +597,7 @@ def main():
         print(f"IDX enrichment failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    if enriched.get("idx_enrichment_status") != "success":
+    if enriched.get("idx_enrichment_status") not in {"success", "unavailable"}:
         print(
             f"IDX enrichment failed: {enriched.get('idx_enrichment_status')}",
             file=sys.stderr,

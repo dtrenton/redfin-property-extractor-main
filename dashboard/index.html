@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trent’s Property Comparator</title>
-    <link rel="stylesheet" href="styles.css?v=may11c">
+    <link rel="stylesheet" href="styles.css?v=may12a">
   </head>
   <body>
     <header class="app-header">
@@ -22,26 +22,35 @@
       <section class="controls" aria-label="Dashboard controls">
         <label class="search-field">
           <span>Search</span>
-          <input id="search-input" type="search" placeholder="Address, strategy, garage...">
+          <input id="search-input" type="search" placeholder="Address, status, garage...">
         </label>
 
         <label>
-          <span>Strategy</span>
-          <select id="strategy-filter">
-            <option value="all">All strategy categories</option>
+          <span>Status</span>
+          <select id="status-filter">
+            <option value="all">For Sale + Pending</option>
+            <option value="For Sale">For Sale</option>
+            <option value="Pending">Pending</option>
+            <option value="Sold">Sold</option>
+            <option value="all-statuses">All statuses</option>
           </select>
         </label>
 
         <label>
-          <span>Garage Fit</span>
-          <select id="garage-fit-filter">
-            <option value="all">All garage fit</option>
+          <span>Sort 1</span>
+          <select id="sort-primary">
           </select>
         </label>
 
         <label>
-          <span>Sort Column</span>
-          <select id="sort-select">
+          <span>Sort 2</span>
+          <select id="sort-secondary">
+          </select>
+        </label>
+
+        <label>
+          <span>Sort 3</span>
+          <select id="sort-tertiary">
           </select>
         </label>
 
@@ -71,6 +80,6 @@
       </aside>
     </div>
 
-    <script src="app.js?v=may11c"></script>
+    <script src="app.js?v=may12a"></script>
   </body>
 </html>

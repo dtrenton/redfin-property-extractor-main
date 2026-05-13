@@ -148,9 +148,10 @@ const elements = {
   emptyState: document.querySelector("#empty-state"),
   count: document.querySelector("#property-count"),
   search: document.querySelector("#search-input"),
-  strategy: document.querySelector("#strategy-filter"),
-  garageFit: document.querySelector("#garage-fit-filter"),
-  sort: document.querySelector("#sort-select"),
+  status: document.querySelector("#status-filter"),
+  sortPrimary: document.querySelector("#sort-primary"),
+  sortSecondary: document.querySelector("#sort-secondary"),
+  sortTertiary: document.querySelector("#sort-tertiary"),
   sortDirection: document.querySelector("#sort-direction"),
   modal: document.querySelector("#details-modal"),
   modalTitle: document.querySelector("#details-title"),
@@ -495,9 +496,12 @@ function renderFeatureChip(item) {
 }
 
 function sortChipValue(property) {
-  const field = elements.sort.value;
-  const value = field === "garage_fit" ? getGarageFit(property) : property[field];
-  return `Sorted by: ${columnLabel(field)} = ${displayValue(value)}`;
+  const fields = activeSortFields();
+  if (!fields.length) return "Sorted by: none";
+  return `Sorted by: ${fields.map((field) => {
+    const value = field === "garage_fit" ? getGarageFit(property) : property[field];
+    return `${columnLabel(field)} = ${displayValue(value)}`;
+  }).join(" | ")}`;
 }
 
 function parseCsv(text) {
@@ -574,39 +578,53 @@ function populateSelect(select, values) {
   }
 }
 
-function populateFilters(data) {
-  const strategies = [...new Set(data.map((item) => item.strategy_category).filter(Boolean))].sort();
-  const garageFits = [...new Set(data.map(getGarageFit).filter(Boolean))].sort();
-  populateSelect(elements.strategy, strategies);
-  populateSelect(elements.garageFit, garageFits);
-}
-
 function csvHeaders(data) {
   const dynamicHeaders = data.flatMap((property) => Object.keys(property));
   return [...new Set([...sheetHeaders, ...dynamicHeaders])];
 }
 
 function populateSortOptions(data = []) {
-  elements.sort.replaceChildren();
-  for (const header of csvHeaders(data)) {
-    const option = document.createElement("option");
-    option.value = header;
-    option.textContent = columnLabel(header);
-    elements.sort.append(option);
+  const headers = csvHeaders(data);
+  const sortControls = [elements.sortPrimary, elements.sortSecondary, elements.sortTertiary];
+
+  for (const select of sortControls) {
+    select.replaceChildren();
+    const noneOption = document.createElement("option");
+    noneOption.value = "";
+    noneOption.textContent = "No additional sort";
+    select.append(noneOption);
+
+    for (const header of headers) {
+      const option = document.createElement("option");
+      option.value = header;
+      option.textContent = columnLabel(header);
+      select.append(option);
+    }
   }
-  elements.sort.value = "price";
+  elements.sortPrimary.value = "price";
+  elements.sortSecondary.value = "price_per_sqft";
+  elements.sortTertiary.value = "days_on_redfin";
+}
+
+function activeSortFields() {
+  return [
+    elements.sortPrimary.value,
+    elements.sortSecondary.value,
+    elements.sortTertiary.value,
+  ].filter(Boolean);
 }
 
 function getFilteredProperties() {
   const query = normalizeText(elements.search.value);
-  const strategy = elements.strategy.value;
-  const garageFit = elements.garageFit.value;
+  const status = elements.status.value;
 
   return properties
     .filter((property) => {
       const propertyGarageFit = getGarageFit(property);
+      const listingStatus = listingStatusDisplay(property.listing_status);
       const searchable = [
         property.address,
+        listingStatus,
         property.strategy_category,
         property.final_decision,
         property.garage,
@@ -617,16 +635,18 @@ function getFilteredProperties() {
       ].map(normalizeText).join(" ");
 
       const matchesQuery = !query || searchable.includes(query);
-      const matchesStrategy = strategy === "all" || property.strategy_category === strategy;
-      const matchesGarageFit = garageFit === "all" || propertyGarageFit === garageFit;
+      const matchesStatus = (
+        status === "all-statuses"
+        || (status === "all" && ["For Sale", "Pending"].includes(listingStatus))
+        || listingStatus === status
+      );
 
-      return matchesQuery && matchesStrategy && matchesGarageFit;
+      return matchesQuery && matchesStatus;
     })
     .sort(sortProperties);
 }
 
 function sortProperties(a, b) {
-  const column = elements.sort.value;
   const direction = elements.sortDirection.value === "desc" ? -1 : 1;
   const strategyRank = {
     "Competitive Target": 1,
@@ -639,29 +659,40 @@ function sortProperties(a, b) {
     "Pass - No Garage": 8,
   };
 
-  if (column === "strategy_category") {
-    return ((strategyRank[a.strategy_category] ?? 99) - (strategyRank[b.strategy_category] ?? 99)) * direction;
+  for (const column of activeSortFields()) {
+    if (column === "strategy_category") {
+      const comparison = (strategyRank[a.strategy_category] ?? 99) - (strategyRank[b.strategy_category] ?? 99);
+      if (comparison !== 0) return comparison * direction;
+      continue;
+    }
+
+    const left = sortableValue(a, column);
+    const right = sortableValue(b, column);
+
+    if (left.empty && right.empty) continue;
+    if (left.empty) return 1;
+    if (right.empty) return -1;
+
+    if (left.type === "number" && right.type === "number") {
+      const comparison = left.value - right.value;
+      if (comparison !== 0) return comparison * direction;
+      continue;
+    }
+
+    if (left.type === "date" && right.type === "date") {
+      const comparison = left.value - right.value;
+      if (comparison !== 0) return comparison * direction;
+      continue;
+    }
+
+    const comparison = String(left.value).localeCompare(String(right.value), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (comparison !== 0) return comparison * direction;
   }
 
-  const left = sortableValue(a, column);
-  const right = sortableValue(b, column);
-
-  if (left.empty && right.empty) return 0;
-  if (left.empty) return 1;
-  if (right.empty) return -1;
-
-  if (left.type === "number" && right.type === "number") {
-    return (left.value - right.value) * direction;
-  }
-
-  if (left.type === "date" && right.type === "date") {
-    return (left.value - right.value) * direction;
-  }
-
-  return String(left.value).localeCompare(String(right.value), undefined, {
-    numeric: true,
-    sensitivity: "base",
-  }) * direction;
+  return 0;
 }
 
 function sortableValue(property, column) {
@@ -866,7 +897,6 @@ async function init() {
   try {
     properties = await loadData();
     populateSortOptions(properties);
-    populateFilters(properties);
   } catch (error) {
     console.error(error);
     populateSortOptions();
@@ -874,9 +904,10 @@ async function init() {
   }
 
   elements.search.addEventListener("input", render);
-  elements.strategy.addEventListener("change", render);
-  elements.garageFit.addEventListener("change", render);
-  elements.sort.addEventListener("change", render);
+  elements.status.addEventListener("change", render);
+  elements.sortPrimary.addEventListener("change", render);
+  elements.sortSecondary.addEventListener("change", render);
+  elements.sortTertiary.addEventListener("change", render);
   elements.sortDirection.addEventListener("change", render);
   elements.modalClose.addEventListener("click", closeDetails);
   elements.modal.addEventListener("click", (event) => {

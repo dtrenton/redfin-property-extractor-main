@@ -219,7 +219,7 @@ def does_not_apply(header, data):
 
 
 def idx_enrichment_succeeded(data):
-    return data.get("idx_enrichment_status") == "success" or bool(data.get("idx_details"))
+    return data.get("idx_enrichment_status") == "success"
 
 
 def idx_has_basement_field(data):
