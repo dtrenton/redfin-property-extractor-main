@@ -150,9 +150,11 @@ const elements = {
   search: document.querySelector("#search-input"),
   status: document.querySelector("#status-filter"),
   sortPrimary: document.querySelector("#sort-primary"),
+  sortPrimaryDirection: document.querySelector("#sort-primary-direction"),
   sortSecondary: document.querySelector("#sort-secondary"),
+  sortSecondaryDirection: document.querySelector("#sort-secondary-direction"),
   sortTertiary: document.querySelector("#sort-tertiary"),
-  sortDirection: document.querySelector("#sort-direction"),
+  sortTertiaryDirection: document.querySelector("#sort-tertiary-direction"),
   modal: document.querySelector("#details-modal"),
   modalTitle: document.querySelector("#details-title"),
   modalContent: document.querySelector("#details-content"),
@@ -496,11 +498,12 @@ function renderFeatureChip(item) {
 }
 
 function sortChipValue(property) {
-  const fields = activeSortFields();
-  if (!fields.length) return "Sorted by: none";
-  return `Sorted by: ${fields.map((field) => {
+  const sorts = activeSortFields();
+  if (!sorts.length) return "Filtered by: none";
+  return `Filtered by: ${sorts.map(({ field, direction }) => {
     const value = field === "garage_fit" ? getGarageFit(property) : property[field];
-    return `${columnLabel(field)} = ${displayValue(value)}`;
+    const directionLabel = direction === "desc" ? "desc" : "asc";
+    return `${columnLabel(field)} (${directionLabel}) = ${displayValue(value)}`;
   }).join(" | ")}`;
 }
 
@@ -608,10 +611,10 @@ function populateSortOptions(data = []) {
 
 function activeSortFields() {
   return [
-    elements.sortPrimary.value,
-    elements.sortSecondary.value,
-    elements.sortTertiary.value,
-  ].filter(Boolean);
+    { field: elements.sortPrimary.value, direction: elements.sortPrimaryDirection.value },
+    { field: elements.sortSecondary.value, direction: elements.sortSecondaryDirection.value },
+    { field: elements.sortTertiary.value, direction: elements.sortTertiaryDirection.value },
+  ].filter((sort) => sort.field);
 }
 
 function getFilteredProperties() {
@@ -647,7 +650,6 @@ function getFilteredProperties() {
 }
 
 function sortProperties(a, b) {
-  const direction = elements.sortDirection.value === "desc" ? -1 : 1;
   const strategyRank = {
     "Competitive Target": 1,
     "Leverage Opportunity": 2,
@@ -659,7 +661,8 @@ function sortProperties(a, b) {
     "Pass - No Garage": 8,
   };
 
-  for (const column of activeSortFields()) {
+  for (const { field: column, direction: sortDirection } of activeSortFields()) {
+    const direction = sortDirection === "desc" ? -1 : 1;
     if (column === "strategy_category") {
       const comparison = (strategyRank[a.strategy_category] ?? 99) - (strategyRank[b.strategy_category] ?? 99);
       if (comparison !== 0) return comparison * direction;
@@ -906,9 +909,11 @@ async function init() {
   elements.search.addEventListener("input", render);
   elements.status.addEventListener("change", render);
   elements.sortPrimary.addEventListener("change", render);
+  elements.sortPrimaryDirection.addEventListener("change", render);
   elements.sortSecondary.addEventListener("change", render);
+  elements.sortSecondaryDirection.addEventListener("change", render);
   elements.sortTertiary.addEventListener("change", render);
-  elements.sortDirection.addEventListener("change", render);
+  elements.sortTertiaryDirection.addEventListener("change", render);
   elements.modalClose.addEventListener("click", closeDetails);
   elements.modal.addEventListener("click", (event) => {
     if (event.target === elements.modal) closeDetails();

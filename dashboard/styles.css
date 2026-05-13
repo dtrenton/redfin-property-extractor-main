@@ -82,7 +82,7 @@ main {
 
 .controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1.35fr) repeat(5, minmax(120px, 1fr));
+  grid-template-columns: minmax(220px, 1.35fr) minmax(125px, 0.9fr) repeat(3, minmax(145px, 1fr) minmax(105px, 0.65fr));
   gap: 10px;
   margin-bottom: 14px;
 }

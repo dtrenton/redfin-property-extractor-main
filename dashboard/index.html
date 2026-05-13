@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trent’s Property Comparator</title>
-    <link rel="stylesheet" href="styles.css?v=may12a">
+    <link rel="stylesheet" href="styles.css?v=may12b">
   </head>
   <body>
     <header class="app-header">
@@ -37,26 +37,42 @@
         </label>
 
         <label>
-          <span>Sort 1</span>
+          <span>Filter 1</span>
           <select id="sort-primary">
           </select>
         </label>
 
         <label>
-          <span>Sort 2</span>
+          <span>Dir 1</span>
+          <select id="sort-primary-direction">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Filter 2</span>
           <select id="sort-secondary">
           </select>
         </label>
 
         <label>
-          <span>Sort 3</span>
+          <span>Dir 2</span>
+          <select id="sort-secondary-direction">
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Filter 3</span>
           <select id="sort-tertiary">
           </select>
         </label>
 
         <label>
-          <span>Direction</span>
-          <select id="sort-direction">
+          <span>Dir 3</span>
+          <select id="sort-tertiary-direction">
             <option value="asc">Ascending</option>
             <option value="desc">Descending</option>
           </select>
@@ -80,6 +96,6 @@
       </aside>
     </div>
 
-    <script src="app.js?v=may12a"></script>
+    <script src="app.js?v=may12b"></script>
   </body>
 </html>
