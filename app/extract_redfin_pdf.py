@@ -6,18 +6,14 @@ import re
 
 try:
     from normalize_property import MISSING
+    from enrich_with_idx import extract_mls_number_from_text, idx_url_for_mls
 except ModuleNotFoundError:
     from app.normalize_property import MISSING
+    from app.enrich_with_idx import extract_mls_number_from_text, idx_url_for_mls
 
 METADATA_OUTPUT_PATH = "outputs/extraction_metadata.json"
 IMAGE_OUTPUT_ROOT = "outputs/images"
 REDFIN_URL_PATTERN = re.compile(r"https?://(?:www\.)?redfin\.com/[^\s)<>\"]*/home/\d+", re.IGNORECASE)
-MLS_NUMBER_PATTERNS = [
-    re.compile(r"\bMLS#\s*([A-Za-z0-9-]+)", re.IGNORECASE),
-    re.compile(r"Source:\s*REALTOR(?:®|\(R\))?\s+Association[^#]*#\s*([A-Za-z0-9-]+)", re.IGNORECASE),
-]
-
-
 def clean_listing_url(url):
     return url.rstrip(".,);]")
 
@@ -111,15 +107,16 @@ def extract_listing_url(pdf_path, text):
 
 
 def extract_mls_number(text, pdf_path=None):
-    values = [text]
+    values = []
     if pdf_path:
         values.append(os.path.basename(pdf_path))
+        values.extend(extract_metadata_values_from_pdf(pdf_path))
+    values.append(text)
 
     for value in values:
-        for pattern in MLS_NUMBER_PATTERNS:
-            match = pattern.search(str(value))
-            if match:
-                return match.group(1)
+        mls_number = extract_mls_number_from_text(value)
+        if mls_number:
+            return mls_number
 
     return MISSING
 
@@ -137,6 +134,7 @@ def main():
     text = extract_text_from_pdf(pdf_path)
     listing_url = extract_listing_url(pdf_path, text)
     mls_number = extract_mls_number(text, pdf_path)
+    idx_url = idx_url_for_mls(mls_number) if mls_number != MISSING else MISSING
     address = extract_address_from_text(text)
     image_folder = image_folder_for_pdf(pdf_path, listing_url, address)
 
@@ -151,6 +149,7 @@ def main():
             {
                 "listing_url": listing_url,
                 "mls_number": mls_number,
+                "idx_url": idx_url,
                 "source_pdf": pdf_path,
                 "image_folder": image_folder,
             },
@@ -161,6 +160,7 @@ def main():
     print(f"Processed: {pdf_path}")
     print(f"Listing URL: {listing_url}")
     print(f"MLS number: {mls_number}")
+    print(f"IDX URL: {idx_url}")
     print(f"Image folder: {image_folder}")
     print(f"Characters extracted: {len(text)}")
     print(f"Saved to: {output_path}")

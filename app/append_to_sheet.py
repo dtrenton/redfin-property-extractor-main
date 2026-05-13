@@ -462,9 +462,13 @@ def append_missing_headers_only(sheet, existing, missing_headers):
     old_headers = existing[0]
     new_headers = old_headers + missing_headers
     validate_append_only_headers(old_headers, new_headers)
+    required_total_columns = len(new_headers)
+    if required_total_columns > sheet.col_count:
+        sheet.add_cols(required_total_columns - sheet.col_count)
+
     start_col = column_letter(len(old_headers) + 1)
     end_col = column_letter(len(new_headers))
-    sheet.update(f"{start_col}1:{end_col}1", [missing_headers])
+    sheet.update(range_name=f"{start_col}1:{end_col}1", values=[missing_headers])
     print(f"Headers appended: {', '.join(missing_headers)}")
     existing[0] = new_headers
     return existing
@@ -520,10 +524,10 @@ def derive_mls_from_existing_row(row_data):
 
 def derive_idx_url_from_existing_row(row_data):
     existing_idx_url = existing_cell(row_data, "idx_url")
-    if existing_idx_url:
-        return existing_idx_url, existing_cell(row_data, "mls_number")
-
     mls_number = derive_mls_from_existing_row(row_data)
+    if existing_idx_url:
+        return existing_idx_url, mls_number
+
     if not mls_number:
         return None, None
     return idx_url_for_mls(mls_number), mls_number
@@ -621,7 +625,7 @@ def refresh_existing_rows():
         updates = refresh_row_payload(row_data)
         next_row = set_row_values(values, header_row, updates)
         end_col = column_letter(len(header_row))
-        sheet.update(f"A{row_number}:{end_col}{row_number}", [next_row])
+        sheet.update(range_name=f"A{row_number}:{end_col}{row_number}", values=[next_row])
 
         if updates.get("refresh_success") == "Yes":
             refreshed += 1
@@ -638,6 +642,8 @@ def refresh_existing_rows():
 
 
 def main():
+    dry_run = "--dry-run" in sys.argv
+
     # Load JSON
     with open(INPUT_FILE, "r") as f:
         data = json.load(f)
@@ -646,7 +652,9 @@ def main():
 
     sheet = auth_sheet()
 
-    existing = ensure_headers(sheet, data)
+    existing = sheet.get_all_values() if dry_run else ensure_headers(sheet, data)
+    if not existing:
+        existing = [desired_headers(data)]
     header_row = existing[0]
     listing_url_col = header_row.index("listing_url") + 1 if "listing_url" in header_row else None
     source_pdf_col = header_row.index("source_pdf") + 1 if "source_pdf" in header_row else None
@@ -666,12 +674,26 @@ def main():
         end_col = column_letter(len(header_row))
         existing_values = existing[row_number - 1] if row_number - 1 < len(existing) else []
         row = build_update_row(existing_values, header_row, data)
-        sheet.update(f"A{row_number}:{end_col}{row_number}", [row])
-        print(f"Existing row updated by {match_type}")
+        if dry_run:
+            print(f"DRY RUN: Existing row would be updated by {match_type}")
+            print(f"ROW_MATCH_METHOD: {match_type}")
+            print("UPDATE_RESULT: would update existing row")
+        else:
+            sheet.update(range_name=f"A{row_number}:{end_col}{row_number}", values=[row])
+            print(f"Existing row updated by {match_type}")
+            print(f"ROW_MATCH_METHOD: {match_type}")
+            print("UPDATE_RESULT: updated existing row")
     else:
         row = build_row(data, header_row)
-        sheet.append_row(row)
-        print("New row added")
+        if dry_run:
+            print("DRY RUN: New row would be added")
+            print("ROW_MATCH_METHOD: none")
+            print("UPDATE_RESULT: would append new row")
+        else:
+            sheet.append_row(row)
+            print("New row added")
+            print("ROW_MATCH_METHOD: none")
+            print("UPDATE_RESULT: appended new row")
 
 if __name__ == "__main__":
     if "--cleanup-live-refresh-columns" in sys.argv or "cleanup_live_refresh_columns" in sys.argv:

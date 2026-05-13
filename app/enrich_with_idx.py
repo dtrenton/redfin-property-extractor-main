@@ -10,6 +10,7 @@ try:
     from normalize_property import MISSING
     from rubric import (
         recalculate_price_per_sqft,
+        update_buyer_leverage,
         update_extraction_quality,
         update_final_decision,
         update_market_activity,
@@ -21,6 +22,7 @@ except ModuleNotFoundError:
     from app.normalize_property import MISSING
     from app.rubric import (
         recalculate_price_per_sqft,
+        update_buyer_leverage,
         update_extraction_quality,
         update_final_decision,
         update_market_activity,
@@ -375,6 +377,7 @@ def apply_idx_unavailable_fallback(enriched):
 
     update_extraction_quality(enriched)
     update_property_risk(enriched)
+    update_buyer_leverage(enriched)
     update_market_activity(enriched)
     update_final_decision(enriched)
     update_strategy_category(enriched)
@@ -613,6 +616,7 @@ def merge_idx_details(scored_property, idx_data, idx_url, mls_number):
     apply_garage_type_interpretation(enriched)
     update_extraction_quality(enriched)
     update_property_risk(enriched)
+    update_buyer_leverage(enriched)
     update_market_activity(enriched)
     update_final_decision(enriched)
     update_strategy_category(enriched)
@@ -636,7 +640,7 @@ def enrich_scored_property():
         print("IDX enrichment skipped: MLS number missing")
         return scored_property
 
-    idx_url = idx_url_for_mls(mls_number)
+    idx_url = scored_property.get("idx_url") if not is_fillable_value(scored_property.get("idx_url")) else idx_url_for_mls(mls_number)
     idx_data = extract_idx_page(idx_url)
     enriched = merge_idx_details(scored_property, idx_data, idx_url, mls_number)
     save_json(SCORED_PROPERTY_FILE, enriched)

@@ -214,6 +214,150 @@ def missing_market_interest_notes(data):
             notes.append("favorites_per_day unavailable because days_on_redfin is MISSING")
     return notes
 
+def numeric_or_none(value):
+    return clean_number(value)
+
+def current_status_value(data):
+    return data.get("current_status") or data.get("listing_status") or "For Sale"
+
+def current_dom_value(data):
+    if has_value(data, "current_dom"):
+        return int(clean_number(data.get("current_dom")))
+    if has_value(data, "days_on_redfin"):
+        return int(clean_number(data.get("days_on_redfin")))
+    return None
+
+def current_price_value(data):
+    return numeric_or_none(data.get("current_price")) or numeric_or_none(data.get("price"))
+
+def recent_price_drop_value(data):
+    amount = numeric_or_none(data.get("price_reduction_amount"))
+    price_change_count = numeric_or_none(data.get("price_change_count_1y"))
+    return bool((amount is not None and amount > 0) or (price_change_count is not None and price_change_count >= 1))
+
+def price_drop_pct_value(data):
+    existing = numeric_or_none(data.get("price_drop_pct"))
+    if existing is not None:
+        return existing
+
+    existing = numeric_or_none(data.get("price_reduction_pct"))
+    if existing is not None:
+        return existing
+
+    price_before = numeric_or_none(data.get("price_before_reduction"))
+    current_price = current_price_value(data)
+    if price_before and current_price and price_before > current_price:
+        return round((price_before - current_price) / price_before, 4)
+    return MISSING
+
+def back_on_market_value(data):
+    listed_count = numeric_or_none(data.get("listed_count_1y"))
+    removed_count = numeric_or_none(data.get("listing_removed_count_1y"))
+    if listed_count is None or removed_count is None:
+        return MISSING
+    return "Yes" if listed_count > 1 and removed_count >= 1 else "No"
+
+def pending_speed_value(data):
+    status = current_status_value(data)
+    dom = current_dom_value(data)
+    if status != "Pending" or dom is None:
+        return MISSING
+    if dom <= 7:
+        return "Pending within 7 days"
+    if dom <= 21:
+        return "Pending within 21 days"
+    return "Pending after 21 days"
+
+def update_live_market_fields(data):
+    data["current_status"] = current_status_value(data)
+    data["current_dom"] = current_dom_value(data) if current_dom_value(data) is not None else MISSING
+    current_price = current_price_value(data)
+    data["current_price"] = current_price if current_price is not None else MISSING
+    data["recent_price_drop"] = "Yes" if recent_price_drop_value(data) else "No"
+    data["price_drop_pct"] = price_drop_pct_value(data)
+    data["back_on_market"] = back_on_market_value(data)
+    data["pending_speed"] = pending_speed_value(data)
+    return data
+
+def update_redfin_snapshot_interest(data):
+    score = 1
+
+    if has_value(data, "views_per_day"):
+        views_per_day = float(data["views_per_day"])
+        if views_per_day >= 25:
+            score += 2
+        elif views_per_day >= 10:
+            score += 1
+
+    if has_value(data, "favorites_per_day") and float(data["favorites_per_day"]) >= 1:
+        score += 1
+
+    if has_value(data, "favorite_conversion_rate"):
+        conversion = float(data["favorite_conversion_rate"])
+        if 0.05 <= conversion <= 0.2:
+            score += 1
+
+    data["redfin_snapshot_interest_score"] = min(score, 5)
+    return data
+
+def update_live_market_interest(data):
+    update_live_market_fields(data)
+    status = current_status_value(data)
+    dom = current_dom_value(data)
+    recent_price_drop = recent_price_drop_value(data)
+    price_changes = numeric_or_none(data.get("price_change_count_1y")) or 0
+    removed_count = numeric_or_none(data.get("listing_removed_count_1y")) or 0
+    listed_count = numeric_or_none(data.get("listed_count_1y")) or 0
+    back_on_market = data.get("back_on_market") == "Yes"
+
+    score = 2
+    flags = []
+
+    if status == "Sold":
+        score = 5
+        flags.append("Sold status reflects completed market action")
+    elif status == "Pending":
+        if dom is not None and dom <= 7:
+            score = 5
+            flags.append("Pending within 7 days")
+        elif dom is not None and dom <= 21:
+            score = 4
+            flags.append("Pending within 21 days")
+        else:
+            score = 3
+            flags.append("Pending status")
+    else:
+        if dom is None:
+            flags.append("Current DOM unavailable")
+        elif dom <= 7 and not recent_price_drop:
+            score = 4
+            flags.append("Active with 0-7 current DOM and no price drop")
+        elif dom <= 7:
+            score = 3
+            flags.append("Active with 0-7 current DOM")
+        elif dom <= 21:
+            score = 3
+            flags.append("Active with 8-21 current DOM")
+        else:
+            score = 1
+            flags.append("Active with current DOM over 21")
+
+    if recent_price_drop:
+        score -= 1
+        flags.append("Recent price drop")
+    if price_changes >= 2:
+        score -= 1
+        flags.append("Multiple price changes in last 365 days")
+    if removed_count >= 1 or listed_count > 1:
+        score -= 1
+        flags.append("Recent relisting/removal activity")
+    if back_on_market:
+        flags.append("Back on market signal")
+
+    data["live_market_interest_score"] = max(1, min(score, 5))
+    data["live_market_interest_flags"] = flags
+    return data
+
 def parse_redfin_history_date(value):
     try:
         return datetime.strptime(value.strip(), "%b %d, %Y").date()
@@ -428,20 +572,17 @@ def update_property_risk(data):
     return data
 
 def update_market_activity(data):
-    market_activity_score = 1
+    update_redfin_snapshot_interest(data)
+    update_live_market_interest(data)
+
+    market_activity_score = data.get("live_market_interest_score", 1)
     market_activity_flags = []
 
-    if has_value(data, "days_on_redfin"):
-        dom = int(data["days_on_redfin"])
-
-        if dom <= 7:
-            market_activity_score += 2
-            market_activity_flags.append("0-7 days on Redfin")
-        elif dom <= 14:
-            market_activity_score += 1
-            market_activity_flags.append("8-14 days on Redfin")
+    market_activity_flags.extend(data.get("live_market_interest_flags", []))
+    if data.get("redfin_snapshot_interest_score", 1) >= 4:
+        market_activity_flags.append("Strong Redfin snapshot interest")
     else:
-        market_activity_flags.append("Days on Redfin missing")
+        market_activity_flags.append("Redfin traffic is snapshot-only context")
 
     if data["price_per_sqft_signal"] == "Lower price per sq ft":
         market_activity_score += 1
@@ -481,8 +622,7 @@ def update_final_decision(data):
     ):
         final_decision = "Consider"
     elif (
-        has_value(data, "days_on_redfin")
-        and int(data["days_on_redfin"]) <= 7
+        data.get("live_market_interest_score", 0) >= 4
         and has_value(data, "price_per_sqft")
         and data["price_per_sqft"] <= 180
         and data["garage_requirement"] == "Meets requirement"
@@ -493,6 +633,54 @@ def update_final_decision(data):
 
     data["final_decision"] = final_decision
 
+    return data
+
+def update_buyer_leverage(data):
+    update_live_market_fields(data)
+
+    buyer_leverage_score = 1
+    buyer_leverage_flags = []
+    status = current_status_value(data)
+    dom = current_dom_value(data)
+
+    if status == "For Sale":
+        if dom is not None and dom >= 60:
+            buyer_leverage_score += 2
+            buyer_leverage_flags.append("Active with 60+ current DOM")
+        elif dom is not None and dom >= 30:
+            buyer_leverage_score += 1.5
+            buyer_leverage_flags.append("Active with 30-59 current DOM")
+        elif dom is not None and dom >= 22:
+            buyer_leverage_score += 1
+            buyer_leverage_flags.append("Active with current DOM over 21")
+    elif status in {"Pending", "Sold"}:
+        buyer_leverage_flags.append(f"{status} status reduces current buyer leverage")
+
+    if recent_price_drop_value(data):
+        buyer_leverage_score += 1
+        buyer_leverage_flags.append("Recent price drop")
+
+    if has_value(data, "price_change_count_1y") and data["price_change_count_1y"] >= 2:
+        buyer_leverage_score += 1
+        buyer_leverage_flags.append("Multiple price changes in last 365 days")
+    elif has_value(data, "price_change_count_1y") and data["price_change_count_1y"] == 1:
+        buyer_leverage_score += 0.5
+        buyer_leverage_flags.append("One price change in last 365 days")
+
+    if has_value(data, "listing_removed_count_1y") and data["listing_removed_count_1y"] >= 1:
+        buyer_leverage_score += 1
+        buyer_leverage_flags.append("Listing removed in last 365 days")
+
+    if has_value(data, "listed_count_1y") and data["listed_count_1y"] > 1:
+        buyer_leverage_score += 1
+        buyer_leverage_flags.append("Multiple listings in last 365 days")
+
+    if data.get("back_on_market") == "Yes":
+        buyer_leverage_score += 1
+        buyer_leverage_flags.append("Back on market")
+
+    data["buyer_leverage_score"] = min(buyer_leverage_score, 5)
+    data["buyer_leverage_flags"] = buyer_leverage_flags
     return data
 
 def no_garage_leverage_signals(data, stale_or_aging, buyer_signal):
@@ -532,11 +720,11 @@ def classify_strategy_category(data):
     price_not_extreme = price_per_sqft is not None and 100 <= price_per_sqft <= 220
     manageable_risk = data.get("property_risk_score", 0) <= 3
     buyer_signal = str(data.get("buyer_interest_signal", "")).lower()
-    velocity = str(data.get("interest_velocity", "")).lower()
+    live_interest = data.get("live_market_interest_score", 1)
     normal_or_strong_interest = (
-        "strong buyer interest" in buyer_signal
+        live_interest >= 3
+        or "strong buyer interest" in buyer_signal
         or "normal market interest" in buyer_signal
-        or velocity in {"moderate", "high"}
     )
     high_risk = data.get("property_risk_score", 0) >= 5
     high_price = data.get("price_per_sqft_signal") == "Higher price per sq ft"
@@ -576,6 +764,8 @@ def classify_strategy_category(data):
         has_value(data, "listing_removed_count_1y") and data["listing_removed_count_1y"] >= 1,
         has_value(data, "price_change_count_1y") and data["price_change_count_1y"] >= 1,
         has_value(data, "price_reduction_amount") and data["price_reduction_amount"] > 0,
+        recent_price_drop_value(data),
+        data.get("back_on_market") == "Yes",
         "low buyer attention" in buyer_signal,
         data.get("buyer_leverage_score", 0) >= 3,
     ]
@@ -614,6 +804,7 @@ def main():
     metadata = load_extraction_metadata()
     data["listing_url"] = metadata.get("listing_url")
     data["mls_number"] = metadata.get("mls_number")
+    data["idx_url"] = metadata.get("idx_url")
     data["source_pdf"] = metadata.get("source_pdf")
     data["image_folder"] = metadata.get("image_folder")
     data["listing_status"] = detect_listing_status(text)
@@ -720,41 +911,8 @@ def main():
     data = update_extraction_quality(data)
 
     update_property_risk(data)
-    data["price_change_count"] = len(re.findall(r"\bprice\s+(?:changed|reduced|dropped|reduction)\b", lower_text))
-
-    # Inferred market signals are based only on observable listing behavior:
-    # DOM, recent listing/removal history, price changes, price per sq ft, garage,
-    # home age, and missing-data level.
-    buyer_leverage_score = 1
-    buyer_leverage_flags = []
-
-    if has_value(data, "days_on_redfin"):
-        dom = int(data["days_on_redfin"])
-
-        if dom >= 60:
-            buyer_leverage_score += 2
-            buyer_leverage_flags.append("60+ days on Redfin")
-        elif dom >= 30:
-            buyer_leverage_score += 1
-            buyer_leverage_flags.append("30-59 days on Redfin")
-        elif dom >= 8:
-            buyer_leverage_score += 0.5
-            buyer_leverage_flags.append("8-29 days on Redfin")
-
-    if has_value(data, "listing_removed_count_1y") and data["listing_removed_count_1y"] >= 1:
-        buyer_leverage_score += 1
-        buyer_leverage_flags.append("Listing removed in last 365 days")
-
-    if has_value(data, "price_change_count_1y") and data["price_change_count_1y"] >= 1:
-        buyer_leverage_score += 1
-        buyer_leverage_flags.append("Price change in last 365 days")
-
-    if has_value(data, "listed_count_1y") and data["listed_count_1y"] > 1:
-        buyer_leverage_score += 1
-        buyer_leverage_flags.append("Multiple listings in last 365 days")
-
-    data["buyer_leverage_score"] = min(buyer_leverage_score, 5)
-    data["buyer_leverage_flags"] = buyer_leverage_flags
+    # Buyer leverage is based on current/listing behavior, not Redfin traffic.
+    update_buyer_leverage(data)
 
     update_market_activity(data)
 
