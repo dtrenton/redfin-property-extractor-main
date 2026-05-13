@@ -33,6 +33,7 @@ INPUT_FILE = "outputs/scored_property.json"
 HEADERS = [
     "address",
     "listing_status",
+    "current_status",
     "price",
     "sq_ft",
     "price_per_sqft",
@@ -60,8 +61,13 @@ HEADERS = [
     "strategy_category",
     "garage_fit",
     "final_decision",
+    "data_completeness_score",
     "date_added",
     "listing_url",
+    "mls_number",
+    "idx_url",
+    "last_checked",
+    "refresh_success",
     "image_folder",
 ]
 
@@ -91,6 +97,20 @@ LIVE_REFRESH_HEADERS = [
     "refresh_notes",
 ]
 
+REFRESH_NOTES_HEADER = "refresh_notes"
+
+UNWANTED_LIVE_REFRESH_HEADERS = {
+    "market_interest_notes",
+    "missing_fields",
+    "extraction_confidence_score",
+    "age_risk",
+    "garage_requirement",
+    "price_per_sqft_signal",
+    "price_change_count",
+    "market_activity_score",
+    "market_activity_flags",
+}
+
 AUTO_PAYLOAD_HEADER_EXCLUDE = {
     "idx_details",
     "rooms",
@@ -98,7 +118,7 @@ AUTO_PAYLOAD_HEADER_EXCLUDE = {
     "idx_enrichment_warnings",
     "idx_enriched_fields",
     "validation_warnings",
-}
+} | UNWANTED_LIVE_REFRESH_HEADERS
 
 MARKET_TIMING_HEADERS = {
     "days_on_redfin",
@@ -152,25 +172,7 @@ BLANK_IF_MISSING_HEADERS = {
     "refresh_notes",
 }
 
-REMOVED_EXPORT_HEADERS = {
-    "listed_count_lifetime",
-    "listing_removed_count_lifetime",
-    "property_risk_score",
-    "property_risk_flags",
-    "buyer_leverage_score",
-    "buyer_leverage_flags",
-    "urgency_flags",
-    "strategy_fit_score",
-    "strategy_fit_flags",
-    "notes",
-    "source_pdf",
-    "nar_contact_info",
-    "listing_agent_name",
-    "listing_brokerage",
-    "listing_agent_email",
-    "city",
-    "state",
-}
+REMOVED_EXPORT_HEADERS = UNWANTED_LIVE_REFRESH_HEADERS
 
 
 def column_letter(index):
@@ -424,16 +426,19 @@ def payload_headers(data):
 
 
 def desired_headers(data=None):
-    return unique_headers(HEADERS + IDX_EXPORT_HEADERS + LIVE_REFRESH_HEADERS + payload_headers(data))
+    headers = unique_headers(HEADERS + IDX_EXPORT_HEADERS + LIVE_REFRESH_HEADERS + payload_headers(data))
+    headers = [header for header in headers if header != REFRESH_NOTES_HEADER]
+    headers.append(REFRESH_NOTES_HEADER)
+    return headers
 
 
-def remove_legacy_columns(sheet, existing):
+def remove_columns_by_header(sheet, existing, headers_to_remove, label):
     if not existing:
         return existing
 
     header_row = existing[0]
     indexes_to_remove = [
-        index for index, header in enumerate(header_row) if header in REMOVED_EXPORT_HEADERS
+        index for index, header in enumerate(header_row) if header in headers_to_remove
     ]
 
     if not indexes_to_remove:
@@ -443,8 +448,17 @@ def remove_legacy_columns(sheet, existing):
         sheet.delete_columns(index + 1)
 
     removed_headers = [header_row[index] for index in indexes_to_remove]
-    print(f"Removed legacy columns: {', '.join(removed_headers)}")
+    print(f"Removed {label}: {', '.join(removed_headers)}")
     return sheet.get_all_values()
+
+
+def remove_legacy_columns(sheet, existing):
+    return remove_columns_by_header(
+        sheet,
+        existing,
+        REMOVED_EXPORT_HEADERS,
+        "unwanted live-refresh columns",
+    )
 
 
 def ensure_headers(sheet, data=None, remove_legacy=True):
@@ -464,6 +478,8 @@ def ensure_headers(sheet, data=None, remove_legacy=True):
         header for header in header_row if header and header not in expected_headers
     ]
     synced_header_row = unique_headers(expected_headers + extra_headers)
+    synced_header_row = [header for header in synced_header_row if header != REFRESH_NOTES_HEADER]
+    synced_header_row.append(REFRESH_NOTES_HEADER)
 
     if header_row != synced_header_row:
         end_col = column_letter(len(synced_header_row))
@@ -570,6 +586,30 @@ def set_row_values(existing_values, header_row, updates):
     return row
 
 
+def find_existing_row_number(data, listing_urls, source_pdfs, addresses):
+    if data.get("listing_url") and data.get("listing_url") != "MISSING" and data.get("listing_url") in listing_urls:
+        return listing_urls.index(data.get("listing_url")) + 1, "listing_url"
+    if data.get("source_pdf") and data.get("source_pdf") != "MISSING" and data.get("source_pdf") in source_pdfs:
+        return source_pdfs.index(data.get("source_pdf")) + 1, "source_pdf"
+    if data.get("address") in addresses:
+        return addresses.index(data.get("address")) + 1, "address"
+    return None, None
+
+
+def cleanup_live_refresh_columns():
+    sheet = auth_sheet()
+    existing = sheet.get_all_values()
+    existing = remove_columns_by_header(
+        sheet,
+        existing,
+        UNWANTED_LIVE_REFRESH_HEADERS,
+        "unwanted live-refresh columns",
+    )
+    if existing:
+        ensure_headers(sheet, remove_legacy=False)
+    print("Live-refresh schema cleanup complete")
+
+
 def refresh_existing_rows():
     sheet = auth_sheet()
     existing = ensure_headers(
@@ -619,19 +659,18 @@ def main():
     header_row = existing[0]
     row = build_row(data, header_row)
     listing_url_col = header_row.index("listing_url") + 1 if "listing_url" in header_row else None
+    source_pdf_col = header_row.index("source_pdf") + 1 if "source_pdf" in header_row else None
     address_col = header_row.index("address") + 1 if "address" in header_row else 1
 
     listing_urls = sheet.col_values(listing_url_col) if listing_url_col else []
+    source_pdfs = sheet.col_values(source_pdf_col) if source_pdf_col else []
     addresses = sheet.col_values(address_col)
-    row_number = None
-    match_type = None
-
-    if data.get("listing_url") and data.get("listing_url") != "MISSING" and data.get("listing_url") in listing_urls:
-        row_number = listing_urls.index(data.get("listing_url")) + 1
-        match_type = "listing_url"
-    elif data.get("address") in addresses:
-        row_number = addresses.index(data.get("address")) + 1
-        match_type = "address"
+    row_number, match_type = find_existing_row_number(
+        data,
+        listing_urls,
+        source_pdfs,
+        addresses,
+    )
 
     if row_number:
         end_col = column_letter(len(header_row))
@@ -642,7 +681,9 @@ def main():
         print("New row added")
 
 if __name__ == "__main__":
-    if "--refresh-existing-rows" in sys.argv or "refresh_existing_rows" in sys.argv:
+    if "--cleanup-live-refresh-columns" in sys.argv or "cleanup_live_refresh_columns" in sys.argv:
+        cleanup_live_refresh_columns()
+    elif "--refresh-existing-rows" in sys.argv or "refresh_existing_rows" in sys.argv:
         refresh_existing_rows()
     else:
         main()
