@@ -82,9 +82,29 @@ main {
 
 .controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1.35fr) minmax(125px, 0.9fr) repeat(3, minmax(145px, 1fr) minmax(105px, 0.65fr));
+  grid-template-columns: minmax(220px, 1.35fr) minmax(125px, 0.9fr) repeat(3, minmax(145px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.filter-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.direction-control {
+  display: grid;
+  grid-template-columns: 1fr 58px;
+  align-items: center;
+  gap: 8px;
+}
+
+.direction-control select {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 18px;
+  font-weight: 900;
+  text-align: center;
 }
 
 label {

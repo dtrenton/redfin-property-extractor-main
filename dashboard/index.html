@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trent’s Property Comparator</title>
-    <link rel="stylesheet" href="styles.css?v=may12b">
+    <link rel="stylesheet" href="styles.css?v=may12c">
   </head>
   <body>
     <header class="app-header">
@@ -36,47 +36,50 @@
           </select>
         </label>
 
-        <label>
-          <span>Filter 1</span>
-          <select id="sort-primary">
-          </select>
-        </label>
+        <div class="filter-stack">
+          <label>
+            <span>Filter 1</span>
+            <select id="sort-primary">
+            </select>
+          </label>
+          <label class="direction-control">
+            <span>Direction 1</span>
+            <select id="sort-primary-direction" aria-label="Filter 1 direction">
+              <option value="asc">↑</option>
+              <option value="desc">↓</option>
+            </select>
+          </label>
+        </div>
 
-        <label>
-          <span>Dir 1</span>
-          <select id="sort-primary-direction">
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </select>
-        </label>
+        <div class="filter-stack">
+          <label>
+            <span>Filter 2</span>
+            <select id="sort-secondary">
+            </select>
+          </label>
+          <label class="direction-control">
+            <span>Direction 2</span>
+            <select id="sort-secondary-direction" aria-label="Filter 2 direction">
+              <option value="asc">↑</option>
+              <option value="desc">↓</option>
+            </select>
+          </label>
+        </div>
 
-        <label>
-          <span>Filter 2</span>
-          <select id="sort-secondary">
-          </select>
-        </label>
-
-        <label>
-          <span>Dir 2</span>
-          <select id="sort-secondary-direction">
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Filter 3</span>
-          <select id="sort-tertiary">
-          </select>
-        </label>
-
-        <label>
-          <span>Dir 3</span>
-          <select id="sort-tertiary-direction">
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </select>
-        </label>
+        <div class="filter-stack">
+          <label>
+            <span>Filter 3</span>
+            <select id="sort-tertiary">
+            </select>
+          </label>
+          <label class="direction-control">
+            <span>Direction 3</span>
+            <select id="sort-tertiary-direction" aria-label="Filter 3 direction">
+              <option value="asc">↑</option>
+              <option value="desc">↓</option>
+            </select>
+          </label>
+        </div>
       </section>
 
       <section id="cards" class="cards" aria-live="polite"></section>
@@ -96,6 +99,6 @@
       </aside>
     </div>
 
-    <script src="app.js?v=may12b"></script>
+    <script src="app.js?v=may12c"></script>
   </body>
 </html>

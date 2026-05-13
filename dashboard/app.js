@@ -502,7 +502,7 @@ function sortChipValue(property) {
   if (!sorts.length) return "Filtered by: none";
   return `Filtered by: ${sorts.map(({ field, direction }) => {
     const value = field === "garage_fit" ? getGarageFit(property) : property[field];
-    const directionLabel = direction === "desc" ? "desc" : "asc";
+    const directionLabel = direction === "desc" ? "↓" : "↑";
     return `${columnLabel(field)} (${directionLabel}) = ${displayValue(value)}`;
   }).join(" | ")}`;
 }
