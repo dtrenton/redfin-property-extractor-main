@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trent’s Property Comparator</title>
-    <link rel="stylesheet" href="styles.css?v=may12d">
+    <link rel="stylesheet" href="styles.css?v=may12e">
   </head>
   <body>
     <header class="app-header">
@@ -27,28 +27,59 @@
           </label>
 
           <label>
-            <span>Status</span>
-            <select id="status-filter">
-              <option value="all">For Sale + Pending</option>
-              <option value="For Sale">For Sale</option>
-              <option value="Pending">Pending</option>
-              <option value="Sold">Sold</option>
-              <option value="all-statuses">All statuses</option>
+            <span>Price Range</span>
+            <select id="price-filter">
+              <option value="all">All prices</option>
+              <option value="under-150">Under $150k</option>
+              <option value="150-200">$150k-$200k</option>
+              <option value="200-250">$200k-$250k</option>
+              <option value="250-plus">$250k+</option>
             </select>
           </label>
 
           <label>
-            <span>Market Heat</span>
-            <select id="market-heat-filter">
-              <option value="all">All heat</option>
-              <option value="4">Hot</option>
-              <option value="3">Strong</option>
-              <option value="2">Moderate</option>
-              <option value="1">Weak</option>
-              <option value="0">Cool</option>
+            <span>Current DOM</span>
+            <select id="dom-filter">
+              <option value="all">All DOM</option>
+              <option value="0-7">0-7 days</option>
+              <option value="8-21">8-21 days</option>
+              <option value="22-60">22-60 days</option>
+              <option value="60-plus">60+ days</option>
             </select>
           </label>
         </div>
+
+        <div class="market-tabs" role="tablist" aria-label="Market state">
+          <button class="tab-button active" type="button" data-market-state="Active">Active</button>
+          <button class="tab-button" type="button" data-market-state="Pending">Pending</button>
+          <button class="tab-button" type="button" data-market-state="Sold">Sold</button>
+        </div>
+
+        <details class="secondary-filter-panel">
+          <summary>Filters</summary>
+          <div class="secondary-filters">
+            <label>
+              <span>Price Drop</span>
+              <select id="price-drop-filter">
+                <option value="all">All</option>
+                <option value="yes">Price drop</option>
+                <option value="no">No price drop</option>
+              </select>
+            </label>
+            <label><span>Beds</span><select id="beds-filter"><option value="all">Any beds</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></label>
+            <label><span>Baths</span><select id="baths-filter"><option value="all">Any baths</option><option value="1">1+</option><option value="2">2+</option></select></label>
+            <label><span>Garage</span><select id="garage-filter"><option value="all">Any</option><option value="Yes">Garage</option><option value="No">No garage</option></select></label>
+            <label><span>Basement</span><select id="basement-filter"><option value="all">Any</option><option value="yes">Basement</option><option value="no">No basement</option></select></label>
+            <label><span>Fence</span><select id="fence-filter"><option value="all">Any</option><option value="yes">Fence</option><option value="no">No fence</option></select></label>
+            <label><span>Flooring</span><input id="flooring-filter" type="search" placeholder="Wood, vinyl..."></label>
+            <label><span>Construction</span><input id="construction-filter" type="search" placeholder="Siding, brick..."></label>
+            <label><span>Foundation</span><input id="foundation-filter" type="search" placeholder="Block, poured..."></label>
+            <label><span>Heating/Cooling</span><input id="hvac-filter" type="search" placeholder="Gas, central..."></label>
+            <label><span>Roof</span><input id="roof-filter" type="search" placeholder="Asphalt..."></label>
+            <label><span>Water Source</span><input id="water-filter" type="search" placeholder="Public..."></label>
+            <label><span>Appliances</span><input id="appliances-filter" type="search" placeholder="Dishwasher..."></label>
+          </div>
+        </details>
 
         <div class="filter-controls">
           <div class="filter-stack">
@@ -115,6 +146,6 @@
       </aside>
     </div>
 
-    <script src="app.js?v=may12d"></script>
+    <script src="app.js?v=may12e"></script>
   </body>
 </html>

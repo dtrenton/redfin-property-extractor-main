@@ -101,6 +101,59 @@ main {
   grid-template-columns: repeat(3, minmax(150px, 1fr));
 }
 
+.market-tabs {
+  display: inline-flex;
+  width: max-content;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tab-button {
+  min-width: 96px;
+  min-height: 38px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.tab-button:last-child {
+  border-right: 0;
+}
+
+.tab-button.active {
+  background: #eef6f3;
+  color: var(--accent-strong);
+}
+
+.secondary-filter-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.secondary-filter-panel summary {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.secondary-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
 .filter-stack {
   display: grid;
   gap: 6px;
@@ -333,8 +386,30 @@ select:focus {
 }
 
 .market-metric {
-  padding: 3px 8px;
-  border-radius: 999px;
+  display: grid !important;
+  gap: 1px !important;
+  min-width: 82px;
+  padding: 5px 9px;
+  border-radius: 8px;
+}
+
+.market-metric small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.market-metric strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.back-market {
+  border-color: #d38a2d;
+  background: #fff1dc;
 }
 
 .feature-chip {
@@ -367,11 +442,9 @@ select:focus {
 }
 
 .price-drop {
-  padding: 3px 8px;
-  border-radius: 999px;
+  border-color: #e4b8b8;
   color: #7a1f1f;
   background: #f7e4e4;
-  font-weight: 850;
 }
 
 .card-footer {
@@ -599,8 +672,15 @@ body.modal-open {
   }
 
   .top-controls,
-  .filter-controls {
+  .filter-controls,
+  .secondary-filters {
     grid-template-columns: 1fr;
+  }
+
+  .market-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
   }
 
   .cards,

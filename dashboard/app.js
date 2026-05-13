@@ -3,6 +3,7 @@ const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqJIzYh_rVeZm
 const sheetHeaders = [
   "address",
   "listing_status",
+  "current_status",
   "price",
   "sq_ft",
   "price_per_sqft",
@@ -10,12 +11,16 @@ const sheetHeaders = [
   "baths",
   "year_built",
   "days_on_redfin",
+  "current_dom",
   "dom_status",
   "views",
   "favorites",
   "views_per_day",
   "favorites_per_day",
   "interest_velocity",
+  "redfin_snapshot_interest_score",
+  "live_market_interest_score",
+  "live_market_interest_flags",
   "favorite_conversion_rate",
   "buyer_interest_signal",
   "listed_count_1y",
@@ -47,16 +52,34 @@ const sheetHeaders = [
   "price_reduction_date",
   "price_reduction_amount",
   "price_reduction_pct",
+  "current_price",
+  "recent_price_drop",
+  "price_drop_pct",
+  "back_on_market",
+  "pending_speed",
+  "last_checked",
 ];
 
 const detailSections = [
   {
     title: "Market Activity",
     fields: [
+      "views",
+      "favorites",
       "views_per_day",
       "favorites_per_day",
       "favorite_conversion_rate",
+      "interest_velocity",
+      "redfin_snapshot_interest_score",
       "buyer_interest_signal",
+      "live_market_interest_score",
+      "live_market_interest_flags",
+      "current_dom",
+      "current_price",
+      "recent_price_drop",
+      "price_drop_pct",
+      "back_on_market",
+      "pending_speed",
       "listed_count_1y",
       "listing_removed_count_1y",
       "price_change_count_1y",
@@ -130,10 +153,13 @@ const cardDisplayFields = [
   "date_added",
   "listing_date",
   "days_on_redfin",
+  "current_dom",
   "dom_status",
   "views",
   "favorites",
   "interest_velocity",
+  "current_status",
+  "last_checked",
   "garage",
   "garage_type",
   "basement",
@@ -148,8 +174,22 @@ const elements = {
   emptyState: document.querySelector("#empty-state"),
   count: document.querySelector("#property-count"),
   search: document.querySelector("#search-input"),
-  status: document.querySelector("#status-filter"),
-  marketHeat: document.querySelector("#market-heat-filter"),
+  marketTabs: [...document.querySelectorAll("[data-market-state]")],
+  price: document.querySelector("#price-filter"),
+  dom: document.querySelector("#dom-filter"),
+  priceDrop: document.querySelector("#price-drop-filter"),
+  beds: document.querySelector("#beds-filter"),
+  baths: document.querySelector("#baths-filter"),
+  garage: document.querySelector("#garage-filter"),
+  basement: document.querySelector("#basement-filter"),
+  fence: document.querySelector("#fence-filter"),
+  flooring: document.querySelector("#flooring-filter"),
+  construction: document.querySelector("#construction-filter"),
+  foundation: document.querySelector("#foundation-filter"),
+  hvac: document.querySelector("#hvac-filter"),
+  roof: document.querySelector("#roof-filter"),
+  water: document.querySelector("#water-filter"),
+  appliances: document.querySelector("#appliances-filter"),
   sortPrimary: document.querySelector("#sort-primary"),
   sortPrimaryDirection: document.querySelector("#sort-primary-direction"),
   sortSecondary: document.querySelector("#sort-secondary"),
@@ -161,6 +201,8 @@ const elements = {
   modalContent: document.querySelector("#details-content"),
   modalClose: document.querySelector("#details-close"),
 };
+
+let activeMarketState = "Active";
 
 function formatCurrency(value) {
   const number = parseNumber(value);
@@ -194,6 +236,17 @@ function parseDateValue(value) {
 }
 
 function columnLabel(header) {
+  const overrides = {
+    days_on_redfin: "Current DOM",
+    current_dom: "Current DOM",
+    views: "Redfin Snapshot Views",
+    favorites: "Redfin Snapshot Favorites",
+    views_per_day: "Redfin Snapshot Views/Day",
+    favorites_per_day: "Redfin Snapshot Favorites/Day",
+    favorite_conversion_rate: "Redfin Snapshot Favorite Rate",
+    interest_velocity: "Redfin Snapshot Velocity",
+  };
+  if (overrides[header]) return overrides[header];
   return header
     .split("_")
     .map((piece) => {
@@ -309,6 +362,11 @@ function listingStatusDisplay(status) {
   return "For Sale";
 }
 
+function marketState(property) {
+  const status = listingStatusDisplay(property.current_status || property.listing_status);
+  return status === "For Sale" ? "Active" : status;
+}
+
 function buyerEngagement(property) {
   if (hasDisplayValue(property.buyer_interest_signal)) return property.buyer_interest_signal;
   if (hasDisplayValue(property.interest_velocity)) return `${property.interest_velocity} interest`;
@@ -320,16 +378,65 @@ function buyerEngagement(property) {
 }
 
 function domDisplay(property) {
+  if (hasDisplayValue(property.current_dom)) return `${property.current_dom} DOM`;
   if (hasDisplayValue(property.days_on_redfin)) return `${property.days_on_redfin} DOM`;
   if (hasDisplayValue(property.dom_status)) return property.dom_status;
   return "—";
 }
 
 function compactDomDisplay(property) {
-  const days = parseNumber(property.days_on_redfin);
+  const days = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
   if (days !== null) return `${formatNumber(days)}d`;
   if (hasDisplayValue(property.dom_status)) return property.dom_status;
   return "—";
+}
+
+function currentPrice(property) {
+  return hasDisplayValue(property.current_price) ? property.current_price : property.price;
+}
+
+function priceDropAmount(property) {
+  if (hasDisplayValue(property.price_reduction_amount)) return property.price_reduction_amount;
+  const before = parseNumber(property.price_before_reduction);
+  const current = parseNumber(currentPrice(property));
+  if (before !== null && current !== null && before > current) return before - current;
+  return "";
+}
+
+function priceDropDisplay(property) {
+  const amount = priceDropAmount(property);
+  return hasDisplayValue(amount) ? displayCurrency(amount) : "";
+}
+
+function priceCutCount(property) {
+  return parseNumber(property.price_change_count_1y) ?? 0;
+}
+
+function relistCount(property) {
+  return parseNumber(property.listed_count_1y) ?? 0;
+}
+
+function hasPriceDrop(property) {
+  const explicit = normalizeText(property.recent_price_drop);
+  return explicit === "yes" || priceCutCount(property) > 0 || hasDisplayValue(priceDropAmount(property));
+}
+
+function pendingDays(property) {
+  const match = String(property.pending_speed || "").match(/(\d+)/);
+  if (match) return Number(match[1]);
+  return parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+}
+
+function backOnMarketDisplay(property) {
+  const value = normalizeText(property.back_on_market);
+  if (value !== "yes") {
+    const relists = relistCount(property);
+    return relists > 1 ? `Relisted ${formatNumber(relists)}x` : "";
+  }
+  const dom = parseNumber(property.current_dom);
+  if (dom !== null && dom <= 3) return `Back on Market • ${formatNumber(dom)}d`;
+  const relists = relistCount(property);
+  return relists > 1 ? `Relisted ${formatNumber(relists)}x` : "Relisted";
 }
 
 function priceReductionCompact(property) {
@@ -498,6 +605,49 @@ function renderFeatureChip(item) {
   `;
 }
 
+function evidenceChip(label, value, className = "") {
+  if (!hasDisplayValue(value)) return "";
+  return `<span class="market-metric ${className}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></span>`;
+}
+
+function activeMarketStrip(property) {
+  const chips = [
+    evidenceChip("Current DOM", compactDomDisplay(property)),
+  ];
+  const drop = priceDropDisplay(property);
+  if (drop) chips.push(evidenceChip("Price Drop", drop, "price-drop"));
+  chips.push(evidenceChip("Cuts", `${formatNumber(priceCutCount(property))}`));
+  const relisted = backOnMarketDisplay(property);
+  if (relisted) chips.push(evidenceChip("Relisted", relisted, normalizeText(relisted).includes("back on market") ? "back-market" : ""));
+  return chips.join("");
+}
+
+function pendingMarketStrip(property) {
+  const days = pendingDays(property);
+  const pendingText = days !== null ? `Pending in ${formatNumber(days)}d` : displayValue(property.pending_speed);
+  const chips = [evidenceChip("Pending", pendingText)];
+  chips.push(evidenceChip("Cuts Before Pending", `${formatNumber(priceCutCount(property))}`));
+  chips.push(evidenceChip("Price", displayCurrency(currentPrice(property))));
+  return chips.join("");
+}
+
+function soldMarketStrip(property) {
+  const days = pendingDays(property);
+  const daysText = days !== null ? `${formatNumber(days)}d` : "—";
+  return [
+    evidenceChip("Sold", "Sold"),
+    evidenceChip("Days to Pending/Sold", daysText),
+    evidenceChip("Cuts Before Sale", `${formatNumber(priceCutCount(property))}`),
+  ].join("");
+}
+
+function marketEvidenceStrip(property) {
+  const state = marketState(property);
+  if (state === "Pending") return pendingMarketStrip(property);
+  if (state === "Sold") return soldMarketStrip(property);
+  return activeMarketStrip(property);
+}
+
 function sortChipValue(property) {
   const sorts = activeSortFields();
   if (!sorts.length) return "Filtered by: none";
@@ -607,7 +757,7 @@ function populateSortOptions(data = []) {
   }
   elements.sortPrimary.value = "price";
   elements.sortSecondary.value = "price_per_sqft";
-  elements.sortTertiary.value = "days_on_redfin";
+  elements.sortTertiary.value = "current_dom";
 }
 
 function activeSortFields() {
@@ -620,14 +770,14 @@ function activeSortFields() {
 
 function getFilteredProperties() {
   const query = normalizeText(elements.search.value);
-  const status = elements.status.value;
-  const marketHeatFilter = elements.marketHeat.value;
+  const priceFilter = elements.price.value;
+  const domFilter = elements.dom.value;
+  const priceDropFilter = elements.priceDrop.value;
 
   return properties
     .filter((property) => {
       const propertyGarageFit = getGarageFit(property);
-      const listingStatus = listingStatusDisplay(property.listing_status);
-      const heat = marketHeat(property);
+      const listingStatus = marketState(property);
       const searchable = [
         property.address,
         listingStatus,
@@ -641,14 +791,63 @@ function getFilteredProperties() {
       ].map(normalizeText).join(" ");
 
       const matchesQuery = !query || searchable.includes(query);
-      const matchesStatus = (
-        status === "all-statuses"
-        || (status === "all" && ["For Sale", "Pending"].includes(listingStatus))
-        || listingStatus === status
-      );
-      const matchesMarketHeat = marketHeatFilter === "all" || String(heat.flames) === marketHeatFilter;
+      const matchesStatus = listingStatus === activeMarketState;
 
-      return matchesQuery && matchesStatus && matchesMarketHeat;
+      const price = parseNumber(currentPrice(property));
+      const matchesPrice = priceFilter === "all"
+        || (priceFilter === "under-150" && price !== null && price < 150000)
+        || (priceFilter === "150-200" && price !== null && price >= 150000 && price < 200000)
+        || (priceFilter === "200-250" && price !== null && price >= 200000 && price < 250000)
+        || (priceFilter === "250-plus" && price !== null && price >= 250000);
+
+      const dom = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+      const matchesDom = domFilter === "all"
+        || (domFilter === "0-7" && dom !== null && dom <= 7)
+        || (domFilter === "8-21" && dom !== null && dom >= 8 && dom <= 21)
+        || (domFilter === "22-60" && dom !== null && dom >= 22 && dom <= 60)
+        || (domFilter === "60-plus" && dom !== null && dom > 60);
+
+      const drop = hasPriceDrop(property);
+      const matchesDrop = priceDropFilter === "all"
+        || (priceDropFilter === "yes" && drop)
+        || (priceDropFilter === "no" && !drop);
+
+      const matchesBeds = elements.beds.value === "all" || (parseNumber(property.beds) ?? 0) >= Number(elements.beds.value);
+      const matchesBaths = elements.baths.value === "all" || (parseNumber(property.baths) ?? 0) >= Number(elements.baths.value);
+      const matchesGarage = elements.garage.value === "all" || property.garage === elements.garage.value;
+      const matchesBasement = elements.basement.value === "all"
+        || (elements.basement.value === "yes" && basementDisplay(property.basement) === "Yes")
+        || (elements.basement.value === "no" && basementDisplay(property.basement) === "No");
+      const fenceValue = normalizeText(property.fence);
+      const matchesFence = elements.fence.value === "all"
+        || (elements.fence.value === "yes" && isPositiveFeature(property.fence))
+        || (elements.fence.value === "no" && (fenceValue.includes("no") || !hasDisplayValue(property.fence)));
+      const matchesFlooring = !elements.flooring.value || normalizeText(property.flooring).includes(normalizeText(elements.flooring.value));
+      const matchesConstruction = !elements.construction.value || normalizeText(property.construction_materials).includes(normalizeText(elements.construction.value));
+      const matchesFoundation = !elements.foundation.value || normalizeText(property.foundation_details).includes(normalizeText(elements.foundation.value));
+      const hvacText = `${normalizeText(property.heating)} ${normalizeText(property.cooling)}`;
+      const matchesHvac = !elements.hvac.value || hvacText.includes(normalizeText(elements.hvac.value));
+      const matchesRoof = !elements.roof.value || normalizeText(property.roof).includes(normalizeText(elements.roof.value));
+      const matchesWater = !elements.water.value || normalizeText(property.water_source).includes(normalizeText(elements.water.value));
+      const matchesAppliances = !elements.appliances.value || normalizeText(property.appliances).includes(normalizeText(elements.appliances.value));
+
+      return matchesQuery
+        && matchesStatus
+        && matchesPrice
+        && matchesDom
+        && matchesDrop
+        && matchesBeds
+        && matchesBaths
+        && matchesGarage
+        && matchesBasement
+        && matchesFence
+        && matchesFlooring
+        && matchesConstruction
+        && matchesFoundation
+        && matchesHvac
+        && matchesRoof
+        && matchesWater
+        && matchesAppliances;
     })
     .sort(sortProperties);
 }
@@ -811,10 +1010,7 @@ function createCard(property) {
   const card = document.createElement("article");
   card.className = "property-card";
 
-  const listingStatus = listingStatusDisplay(property.listing_status);
-  const heat = marketHeat(property);
-  const priceDrop = priceReductionText(property);
-  const priceReduction = priceReductionLabel(property);
+  const listingStatus = marketState(property);
   const chips = featureChips(property);
   const listingLink = hasDisplayValue(property.listing_url)
     ? `<a class="open-link" href="${escapeHtml(property.listing_url)}" target="_blank" rel="noopener">Open Listing</a>`
@@ -827,22 +1023,17 @@ function createCard(property) {
         <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
       </div>
       <div class="primary-metrics">
-        <span><strong>${displayCurrency(property.price)}</strong><small>Price</small></span>
+        <span><strong>${displayCurrency(currentPrice(property))}</strong><small>Price</small></span>
         <span><strong>${displayPricePerSqft(property.price_per_sqft)}</strong><small>$/Sq Ft</small></span>
         <span><strong>${escapeHtml(bedroomsBathsDisplay(property))}</strong><small>Beds / Baths</small></span>
         <span><strong>${displayNumber(property.sq_ft)}</strong><small>Sq Ft</small></span>
         <span><strong>${escapeHtml(lotDisplay(property))}</strong><small>Lot</small></span>
         <span><strong>${escapeHtml(listingDateDisplay(property))}</strong><small>Added</small></span>
       </div>
-      ${listingLink}
     </div>
 
     <div class="market-row">
-      ${renderMarketHeat(heat, buyerEngagement(property))}
-      <span class="market-metric">Views: ${displayNumber(property.views)}</span>
-      <span class="market-metric">Favorites: ${displayNumber(property.favorites)}</span>
-      <span class="market-metric">DOM: ${escapeHtml(compactDomDisplay(property))}</span>
-      ${priceReduction ? `<span class="price-drop" title="${escapeHtml(priceDrop)}">${escapeHtml(priceReduction)}</span>` : ""}
+      ${marketEvidenceStrip(property)}
     </div>
 
     ${chips.length ? `
@@ -855,6 +1046,7 @@ function createCard(property) {
       <span class="sort-chip">${escapeHtml(sortChipValue(property))}</span>
       <div class="action-buttons">
         <button class="details-button" type="button">Details</button>
+        ${listingLink}
       </div>
     </div>
   `;
@@ -911,8 +1103,30 @@ async function init() {
   }
 
   elements.search.addEventListener("input", render);
-  elements.status.addEventListener("change", render);
-  elements.marketHeat.addEventListener("change", render);
+  elements.price.addEventListener("change", render);
+  elements.dom.addEventListener("change", render);
+  elements.priceDrop.addEventListener("change", render);
+  elements.beds.addEventListener("change", render);
+  elements.baths.addEventListener("change", render);
+  elements.garage.addEventListener("change", render);
+  elements.basement.addEventListener("change", render);
+  elements.fence.addEventListener("change", render);
+  elements.flooring.addEventListener("input", render);
+  elements.construction.addEventListener("input", render);
+  elements.foundation.addEventListener("input", render);
+  elements.hvac.addEventListener("input", render);
+  elements.roof.addEventListener("input", render);
+  elements.water.addEventListener("input", render);
+  elements.appliances.addEventListener("input", render);
+  elements.marketTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      activeMarketState = tab.dataset.marketState;
+      elements.marketTabs.forEach((button) => {
+        button.classList.toggle("active", button === tab);
+      });
+      render();
+    });
+  });
   elements.sortPrimary.addEventListener("change", render);
   elements.sortPrimaryDirection.addEventListener("change", render);
   elements.sortSecondary.addEventListener("change", render);
