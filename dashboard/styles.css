@@ -440,6 +440,61 @@ select:focus {
   background: #e6c84f;
 }
 
+.buyer-interest-scale {
+  display: grid;
+  flex: 0 0 132px;
+  gap: 3px;
+  min-width: 132px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.buyer-interest-scale small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.interest-meter {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  min-height: 8px;
+  width: 100%;
+}
+
+.interest-segment {
+  display: block;
+  height: 8px;
+  min-height: 8px;
+  border-radius: 999px;
+  background: #e3e9ec;
+}
+
+.interest-segment:nth-child(1).active {
+  background: #f4df83;
+}
+
+.interest-segment:nth-child(2).active {
+  background: #efc84a;
+}
+
+.interest-segment:nth-child(3).active {
+  background: #e48529;
+}
+
+.interest-segment:nth-child(4).active {
+  background: #d94431;
+}
+
+.interest-segment:nth-child(5).active {
+  background: #8f1f1f;
+}
+
 .market-heat-0 .active {
   background: #e3e9ec;
 }
@@ -565,8 +620,8 @@ select:focus {
 }
 
 .sort-chip b {
-  color: var(--ink);
-  font-weight: 900;
+  color: var(--muted);
+  font-weight: 850;
 }
 
 .last-checked {

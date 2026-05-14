@@ -737,35 +737,60 @@ def numeric_attr(value):
     return int(match.group(0)) if match else None
 
 
+def srcset_urls(value):
+    urls = []
+    for part in str(value or "").split(","):
+        candidate = part.strip().split()
+        if candidate:
+            urls.append(candidate[0])
+    return urls
+
+
+def image_sources(image):
+    attrs = [
+        "src",
+        "data-src",
+        "data-lazy-src",
+        "data-original",
+        "data-lazy",
+        "data-img",
+        "data-full",
+        "data-large",
+        "data-zoom-image",
+    ]
+    sources = [image.get(attr) for attr in attrs if image.get(attr)]
+    sources.extend(srcset_urls(image.get("srcset")))
+    sources.extend(srcset_urls(image.get("data-srcset")))
+    return sources
+
+
+def background_image_sources(soup):
+    for tag in soup.find_all(style=True):
+        style = tag.get("style") or ""
+        for match in re.findall(r"url\(['\"]?([^'\")]+)", style):
+            yield tag, match
+
+
 def extract_listing_photo_url(soup, base_url):
     skip_terms = re.compile(
-        r"\b(?:logo|banner|icon|agent|headshot|avatar|broker|realtor|map|marker|qr|equal|eho|idx|mls)\b",
+        r"\b(?:logo|banner|icon|agent|headshot|avatar|broker|realtor|map|marker|qr|equal|eho)\b",
         re.IGNORECASE,
     )
+    positive_terms = re.compile(r"\b(?:photo|property|listing|primary|main|hero|house|home)\b", re.IGNORECASE)
     candidates = []
+    seen = set()
 
     for image in soup.find_all("img"):
-        src = (
-            image.get("src")
-            or image.get("data-src")
-            or image.get("data-lazy-src")
-            or image.get("data-original")
-        )
-        if not src:
-            continue
-
-        url = urljoin(base_url, src)
-        descriptor = " ".join(
+        label_descriptor = " ".join(
             str(value or "")
             for value in [
-                url,
                 image.get("alt"),
                 image.get("title"),
                 " ".join(image.get("class", [])),
                 image.get("id"),
             ]
         )
-        if skip_terms.search(descriptor):
+        if skip_terms.search(label_descriptor):
             continue
 
         width = numeric_attr(image.get("width"))
@@ -775,16 +800,45 @@ def extract_listing_photo_url(soup, base_url):
         if height is not None and height < 140:
             continue
 
-        score = 0
-        if width and height:
-            score += width * height
-        if re.search(r"\b(?:photo|property|listing|primary|main)\b", descriptor, re.IGNORECASE):
+        for src in image_sources(image):
+            url = urljoin(base_url, src)
+            if url in seen:
+                continue
+            seen.add(url)
+
+            score = 0
+            if width and height:
+                score += width * height
+            if positive_terms.search(f"{label_descriptor} {url}"):
+                score += 1_000_000
+            candidates.append((score, len(candidates), url))
+
+    for tag, src in background_image_sources(soup):
+        url = urljoin(base_url, src)
+        if url in seen:
+            continue
+
+        label_descriptor = " ".join(
+            str(value or "")
+            for value in [
+                " ".join(tag.get("class", [])),
+                tag.get("id"),
+                tag.get("aria-label"),
+                tag.get("title"),
+            ]
+        )
+        if skip_terms.search(label_descriptor):
+            continue
+
+        seen.add(url)
+        score = 500_000
+        if positive_terms.search(f"{label_descriptor} {url}"):
             score += 1_000_000
-        candidates.append((score, url))
+        candidates.append((score, len(candidates), url))
 
     if not candidates:
         return None
-    return sorted(candidates, reverse=True)[0][1]
+    return sorted(candidates, reverse=True)[0][2]
 
 
 def extract_idx_page(url):

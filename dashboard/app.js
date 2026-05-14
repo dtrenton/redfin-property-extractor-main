@@ -684,6 +684,27 @@ function evidenceChip(label, value, className = "") {
   return `<span class="market-metric ${className}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></span>`;
 }
 
+function buyerInterestLevel(property) {
+  const score = parseNumber(property.live_market_interest_score)
+    ?? parseNumber(property.redfin_snapshot_interest_score)
+    ?? parseNumber(property.urgency_score);
+  if (score === null) return 1;
+  return Math.max(1, Math.min(5, Math.round(score)));
+}
+
+function renderBuyerInterestScale(property) {
+  const level = buyerInterestLevel(property);
+  const segments = [1, 2, 3, 4, 5].map((step) => (
+    `<span class="interest-segment ${step <= level ? "active" : ""}"></span>`
+  )).join("");
+  return `
+    <span class="buyer-interest-scale interest-${level}" title="Buyer interest ${level}/5">
+      <small>Buyer Interest</small>
+      <span class="interest-meter">${segments}</span>
+    </span>
+  `;
+}
+
 function domSignalClass(property) {
   const dom = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
   if (dom === null) return "signal-neutral";
@@ -702,6 +723,7 @@ function cutsSignalClass(property) {
 function activeMarketStrip(property) {
   const chips = [
     evidenceChip("Current DOM", compactDomDisplay(property), domSignalClass(property)),
+    renderBuyerInterestScale(property),
   ];
   const drop = priceDropDisplay(property);
   chips.push(evidenceChip("Cuts", `${formatNumber(priceCutCount(property))}`, cutsSignalClass(property)));
@@ -714,7 +736,7 @@ function activeMarketStrip(property) {
 function pendingMarketStrip(property) {
   const days = pendingDays(property);
   const pendingText = days !== null ? `Pending in ${formatNumber(days)}d` : displayValue(property.pending_speed);
-  const chips = [evidenceChip("Pending", pendingText)];
+  const chips = [evidenceChip("Pending", pendingText), renderBuyerInterestScale(property)];
   chips.push(evidenceChip("Cuts Before Pending", `${formatNumber(priceCutCount(property))}`));
   chips.push(evidenceChip("Price", displayCurrency(currentPrice(property))));
   return chips.join("");
@@ -725,6 +747,7 @@ function soldMarketStrip(property) {
   const daysText = days !== null ? `${formatNumber(days)}d` : "—";
   return [
     evidenceChip("Sold", "Sold"),
+    renderBuyerInterestScale(property),
     evidenceChip("Days to Pending/Sold", daysText),
     evidenceChip("Cuts Before Sale", `${formatNumber(priceCutCount(property))}`),
   ].join("");
@@ -742,7 +765,8 @@ function sortChipValue(property) {
   if (!sorts.length) return "<span><small>Filter:</small><strong>None</strong></span>";
   return sorts.map(({ field, direction }, index) => {
     const directionLabel = direction === "desc" ? "↓" : "↑";
-    return `<span><small>Filter ${index + 1}:</small><strong>${escapeHtml(columnLabel(field))}</strong><b>${directionLabel}</b></span>`;
+    const value = field === "garage_fit" ? getGarageFit(property) : property[field];
+    return `<span><small>Filter ${index + 1}: ${escapeHtml(columnLabel(field))}:</small><strong>${escapeHtml(displayValue(value))}</strong><b>${directionLabel}</b></span>`;
   }).join("");
 }
 
