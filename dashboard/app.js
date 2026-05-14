@@ -673,6 +673,21 @@ function firstDelimitedValue(value) {
     .filter(Boolean)[0] || "";
 }
 
+function zimgImageUrl(value) {
+  const url = firstDelimitedValue(value);
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) return "";
+  if (!url.includes("zimg.paragon.ice.com")) return "";
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().endsWith("zimg.paragon.ice.com")) return "";
+    if (!/\.(jpe?g|png|webp)$/i.test(parsed.pathname)) return "";
+  } catch (error) {
+    return "";
+  }
+  return url;
+}
+
 function dashboardRelativeImagePath(path) {
   if (!hasDisplayValue(path)) return "";
   const cleanPath = String(path).trim();
@@ -689,19 +704,9 @@ function localIdxImageCandidate(property) {
   return `${folder.replace(/\/$/, "")}/idx_01.jpg`;
 }
 
-function testCaseThumbnail(property) {
-  const mls = String(property.mls_number || "").trim();
-  const address = String(property.address || "").toLowerCase();
-  if (mls === "22603373" || address.includes("1105 n kiwanis")) {
-    return "../outputs/images/test-zimg-check/idx_01.jpg";
-  }
-  return "";
-}
-
 function listingPhoto(property) {
-  return firstDelimitedValue(property.listing_photo_url)
-    || firstDelimitedValue(property.idx_image_urls)
-    || testCaseThumbnail(property)
+  return zimgImageUrl(property.listing_photo_url)
+    || zimgImageUrl(property.idx_image_urls)
     || localIdxImageCandidate(property)
     || "";
 }

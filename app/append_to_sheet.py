@@ -346,12 +346,30 @@ def format_cell_value(value, header, data):
     if isinstance(value, list):
         value = " | ".join(str(item) for item in value if not is_missing_export_value(item))
     elif isinstance(value, dict):
-        value = " | ".join(f"{key}: {val}" for key, val in value.items())
+        value = json.dumps(value, ensure_ascii=False)
 
     if is_missing_export_value(value):
         return placeholder_for_header(header, data)
 
     return value
+
+
+def normalize_sheet_value(value, header=None):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, list):
+        return " | ".join(
+            str(item)
+            for item in value
+            if not is_missing_export_value(item)
+        )
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)
 
 
 def value_for_header(data, header):
@@ -422,11 +440,11 @@ def value_for_header(data, header):
         if header == "price_reduction_pct":
             return percent_value(reduction_amount / price_before_reduction)
 
-    return format_cell_value(value, header, data)
+    return normalize_sheet_value(format_cell_value(value, header, data), header)
 
 
 def build_row(data, header_row):
-    return [value_for_header(data, header) for header in header_row]
+    return [normalize_sheet_value(value_for_header(data, header), header) for header in header_row]
 
 
 def build_update_row(existing_values, header_row, data):
@@ -440,7 +458,7 @@ def build_update_row(existing_values, header_row, data):
     for index, header in enumerate(header_row):
         if header in writable_headers:
             row[index] = value_for_header(data, header)
-    return row
+    return [normalize_sheet_value(value, header_row[index]) for index, value in enumerate(row)]
 
 
 def unique_headers(headers):
@@ -606,8 +624,8 @@ def set_row_values(existing_values, header_row, updates):
 
     for header, value in updates.items():
         if header in header_row:
-            row[header_row.index(header)] = value
-    return row
+            row[header_row.index(header)] = normalize_sheet_value(value, header)
+    return [normalize_sheet_value(value, header_row[index]) for index, value in enumerate(row)]
 
 
 def find_existing_row_number(data, listing_urls, source_pdfs, addresses):

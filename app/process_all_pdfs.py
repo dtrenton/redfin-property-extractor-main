@@ -17,6 +17,7 @@ try:
         desired_headers,
         ensure_headers,
         find_existing_row_number,
+        normalize_sheet_value,
     )
 except ModuleNotFoundError:
     from app.append_to_sheet import (
@@ -28,6 +29,7 @@ except ModuleNotFoundError:
         desired_headers,
         ensure_headers,
         find_existing_row_number,
+        normalize_sheet_value,
     )
 
 
@@ -227,7 +229,10 @@ def write_sheet_changes(sheet, header_row, staged_updates, staged_appends, batch
         data = [
             {
                 "range": f"A{row_number}:{column_letter(len(header_row))}{row_number}",
-                "values": [row],
+                "values": [[
+                    normalize_sheet_value(value, header_row[index] if index < len(header_row) else None)
+                    for index, value in enumerate(row)
+                ]],
             }
             for row_number, row in batch
         ]
@@ -239,8 +244,15 @@ def write_sheet_changes(sheet, header_row, staged_updates, staged_appends, batch
         time.sleep(1)
 
     for batch in chunks(staged_appends, batch_size):
+        normalized_batch = [
+            [
+                normalize_sheet_value(value, header_row[index] if index < len(header_row) else None)
+                for index, value in enumerate(row)
+            ]
+            for row in batch
+        ]
         with_sheet_retry(
-            lambda batch=batch: sheet.append_rows(batch, value_input_option="USER_ENTERED"),
+            lambda batch=normalized_batch: sheet.append_rows(batch, value_input_option="USER_ENTERED"),
             "batch row appends",
             stats,
         )

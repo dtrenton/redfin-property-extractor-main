@@ -10,6 +10,7 @@ try:
         ensure_headers,
         is_missing_export_value,
         numeric_value,
+        normalize_sheet_value,
         row_dict_from_values,
         set_row_values,
         value_for_header,
@@ -28,6 +29,7 @@ except ModuleNotFoundError:
         ensure_headers,
         is_missing_export_value,
         numeric_value,
+        normalize_sheet_value,
         row_dict_from_values,
         set_row_values,
         value_for_header,
@@ -360,7 +362,10 @@ def write_updates(sheet, header_row, updates, batch_size, stats):
         body = [
             {
                 "range": f"A{row_number}:{column_letter(len(header_row))}{row_number}",
-                "values": [row],
+                "values": [[
+                    normalize_sheet_value(value, header_row[index] if index < len(header_row) else None)
+                    for index, value in enumerate(row)
+                ]],
             }
             for row_number, row in batch
         ]

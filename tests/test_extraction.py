@@ -427,6 +427,35 @@ def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite():
     assert blank_updates["refresh_success"] == "FALSE"
 
 
+def test_sheet_value_normalization_converts_lists_dicts_and_bools():
+    from append_to_sheet import build_row, normalize_sheet_value, set_row_values
+
+    headers = ["address", "idx_image_urls", "live_market_interest_flags", "idx_details", "refresh_success"]
+    data = {
+        "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
+        "idx_image_urls": [
+            "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/front.JPG",
+            "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/kitchen.JPG",
+        ],
+        "live_market_interest_flags": ["Current DOM unavailable", "Recent price drop"],
+        "idx_details": {"status": "Active", "count": 1},
+        "refresh_success": True,
+    }
+
+    row = build_row(data, headers)
+    values = dict(zip(headers, row))
+
+    assert isinstance(values["idx_image_urls"], str)
+    assert values["idx_image_urls"].count("zimg.paragon.ice.com") == 2
+    assert values["live_market_interest_flags"] == "Current DOM unavailable | Recent price drop"
+    assert values["idx_details"] == '{"status": "Active", "count": 1}'
+    assert values["refresh_success"] == "TRUE"
+    assert normalize_sheet_value(None) == ""
+
+    updated = set_row_values(["", "", "", "", ""], headers, data)
+    assert all(not isinstance(value, (list, dict, bool)) for value in updated)
+
+
 def test_idx_image_url_extraction_accepts_only_zimg_direct_images():
     idx_url = "https://rase-inc.idxbroker.com/idx/details/listing/c239/22603373?printable=1"
     html = f"""
