@@ -247,6 +247,10 @@ function parseNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseDomValue(property) {
+  return parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+}
+
 function parseDateValue(value) {
   if (value === null || value === undefined || value === "" || value === "-") return null;
   const parsed = Date.parse(String(value));
@@ -1088,9 +1092,9 @@ function getFilteredProperties() {
         || (priceFilter === "200-250" && price !== null && price >= 200000 && price < 250000)
         || (priceFilter === "250-plus" && price !== null && price >= 250000);
 
-      const dom = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+      const dom = parseDomValue(property);
       const matchesDom = domFilter === "all"
-        || (domFilter === "0-7" && dom !== null && dom <= 7)
+        || (domFilter === "under-6" && dom !== null && dom <= 6)
         || (domFilter === "8-21" && dom !== null && dom >= 8 && dom <= 21)
         || (domFilter === "22-60" && dom !== null && dom >= 22 && dom <= 60)
         || (domFilter === "60-plus" && dom !== null && dom > 60);
