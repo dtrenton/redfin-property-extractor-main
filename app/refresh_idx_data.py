@@ -52,6 +52,11 @@ REFRESH_HEADERS = [
     "current_dom",
     "current_price",
     "price_change_count_1y",
+    "price_before_reduction",
+    "price_reduction_date",
+    "price_reduction_amount",
+    "price_reduction_pct",
+    "listing_photo_url",
     "last_checked",
     "refresh_success",
     "refresh_notes",
@@ -224,6 +229,9 @@ def build_refresh_payload(row_data, idx_data):
     if current_price is not None:
         payload["current_price"] = current_price
 
+    if not is_missing_export_value(idx_data.get("listing_photo_url")):
+        payload["listing_photo_url"] = idx_data.get("listing_photo_url")
+
     price_change_count = extract_price_change_count_1y(
         idx_data,
         row_data.get("price_change_count_1y"),
@@ -232,9 +240,16 @@ def build_refresh_payload(row_data, idx_data):
         payload["price_change_count_1y"] = price_change_count
 
     price_before_reduction = numeric_value(first_section_value(idx_data, ["Price Before Reduction"]))
+    price_reduction_date = first_section_value(idx_data, ["Price Reduction Date"])
     if price_before_reduction and current_price and price_before_reduction > current_price:
+        reduction_amount = price_before_reduction - current_price
+        payload["price_before_reduction"] = price_before_reduction
+        if not is_missing_export_value(price_reduction_date):
+            payload["price_reduction_date"] = price_reduction_date
+        payload["price_reduction_amount"] = round(reduction_amount, 2)
+        payload["price_reduction_pct"] = round(reduction_amount / price_before_reduction, 4)
         payload["recent_price_drop"] = "Yes"
-        payload["price_drop_pct"] = round((price_before_reduction - current_price) / price_before_reduction, 4)
+        payload["price_drop_pct"] = payload["price_reduction_pct"]
     elif not is_missing_export_value(row_data.get("price_reduction_amount")):
         payload["recent_price_drop"] = "Yes"
     else:

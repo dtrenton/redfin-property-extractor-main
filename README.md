@@ -104,4 +104,5 @@ Refreshable live market interest comes from IDX/MLS-supported listing data when 
 - listing/removal activity
 - back-on-market and pending-speed signals
 
-Use `redfin_snapshot_interest_score` for initial traffic context and `live_market_interest_score` / `live_market_interest_flags` for current market action.
+Use `redfin_snapshot_interest_score` for initial traffic context and `live_market_interest_score` / `live_market_interest_flags` for current market action
+

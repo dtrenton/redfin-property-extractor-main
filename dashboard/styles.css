@@ -258,9 +258,33 @@ select:focus {
 }
 
 .card-left {
-  display: grid;
+  display: flex;
   gap: 8px;
   min-width: 0;
+}
+
+.card-identity {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+}
+
+.listing-photo {
+  flex: 0 0 112px;
+  width: 112px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #edf1f3;
+}
+
+.listing-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .title-block {
@@ -524,8 +548,25 @@ select:focus {
   font-weight: 800;
 }
 
+.sort-chip span {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.sort-chip small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .sort-chip strong {
   color: var(--ink);
+}
+
+.sort-chip b {
+  color: var(--ink);
+  font-weight: 900;
 }
 
 .last-checked {
@@ -802,9 +843,18 @@ body.modal-open {
     width: 100%;
   }
 
+  .card-left {
+    width: 100%;
+  }
+
   .address {
     overflow: visible;
     white-space: normal;
+  }
+
+  .listing-photo {
+    flex-basis: 92px;
+    width: 92px;
   }
 
   .primary-metrics {
@@ -901,6 +951,10 @@ body.modal-open {
   .card-footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .card-left {
+    flex-direction: row;
   }
 
   .address {

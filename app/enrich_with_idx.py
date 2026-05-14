@@ -58,6 +58,7 @@ IDX_ONLY_FIELDS = [
     "price_reduction_date",
     "price_reduction_amount",
     "price_reduction_pct",
+    "listing_photo_url",
 ]
 
 
@@ -559,6 +560,7 @@ def idx_candidate_values(idx_data):
         "price_reduction_date": printable_value(
             first_section_value(idx_data, ["Price Reduction Date"])
         ),
+        "listing_photo_url": printable_value(idx_data.get("listing_photo_url")),
     }
 
 

@@ -2,7 +2,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -732,6 +732,61 @@ def fetch_printable_html(printable_url, result):
         return None
 
 
+def numeric_attr(value):
+    match = re.search(r"\d+", str(value or ""))
+    return int(match.group(0)) if match else None
+
+
+def extract_listing_photo_url(soup, base_url):
+    skip_terms = re.compile(
+        r"\b(?:logo|banner|icon|agent|headshot|avatar|broker|realtor|map|marker|qr|equal|eho|idx|mls)\b",
+        re.IGNORECASE,
+    )
+    candidates = []
+
+    for image in soup.find_all("img"):
+        src = (
+            image.get("src")
+            or image.get("data-src")
+            or image.get("data-lazy-src")
+            or image.get("data-original")
+        )
+        if not src:
+            continue
+
+        url = urljoin(base_url, src)
+        descriptor = " ".join(
+            str(value or "")
+            for value in [
+                url,
+                image.get("alt"),
+                image.get("title"),
+                " ".join(image.get("class", [])),
+                image.get("id"),
+            ]
+        )
+        if skip_terms.search(descriptor):
+            continue
+
+        width = numeric_attr(image.get("width"))
+        height = numeric_attr(image.get("height"))
+        if width is not None and width < 220:
+            continue
+        if height is not None and height < 140:
+            continue
+
+        score = 0
+        if width and height:
+            score += width * height
+        if re.search(r"\b(?:photo|property|listing|primary|main)\b", descriptor, re.IGNORECASE):
+            score += 1_000_000
+        candidates.append((score, url))
+
+    if not candidates:
+        return None
+    return sorted(candidates, reverse=True)[0][1]
+
+
 def extract_idx_page(url):
     printable_url = build_printable_url(url)
     result = empty_result(url, printable_url)
@@ -745,6 +800,7 @@ def extract_idx_page(url):
         return result
 
     text = visible_text_from_html(html)
+    soup = BeautifulSoup(html, "html.parser")
     sections = parse_sections(text, result["debug"])
     if result["debug"]["missing_required_sections"]:
         result["debug"]["warnings"].append(
@@ -754,6 +810,7 @@ def extract_idx_page(url):
     fields = flatten_sections(sections)
     result["sections"] = sections
     result["listing_id"] = derive_listing_id(text, printable_url, fields)
+    result["listing_photo_url"] = extract_listing_photo_url(soup, printable_url)
     result.update(extract_top_level_fields(text, fields))
     result["derived"] = derive_normalized_fields(fields, result["debug"], result.get("full_baths"))
     result["rooms"] = derive_rooms(fields, result["debug"])

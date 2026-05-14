@@ -69,6 +69,7 @@ HEADERS = [
     "last_checked",
     "refresh_success",
     "image_folder",
+    "listing_photo_url",
 ]
 
 IDX_EXPORT_HEADERS = [
@@ -103,6 +104,11 @@ LIVE_REFRESH_HEADERS = [
     "pending_speed",
     "live_market_interest_score",
     "live_market_interest_flags",
+    "price_before_reduction",
+    "price_reduction_date",
+    "price_reduction_amount",
+    "price_reduction_pct",
+    "listing_photo_url",
     "refresh_notes",
 ]
 
@@ -352,6 +358,12 @@ def value_for_header(data, header):
 
     if header == "date_added":
         return datetime.now().strftime("%Y-%m-%d")
+
+    if header == "last_checked" and is_missing_export_value(data.get(header)):
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if header == "refresh_success" and is_missing_export_value(data.get(header)):
+        return "Yes" if data.get("idx_enrichment_status") in {"success", "unavailable"} else ""
 
     idx_fallbacks = {
         "construction_materials": lambda: first_idx_section_value(data, ["Construction Materials"]),

@@ -38,6 +38,7 @@ const sheetHeaders = [
   "date_added",
   "listing_url",
   "image_folder",
+  "listing_photo_url",
   "construction_materials",
   "foundation_details",
   "roof",
@@ -664,6 +665,20 @@ function renderFeatureChip(item) {
   `;
 }
 
+function listingPhoto(property) {
+  return property.listing_photo_url || property.idx_photo_url || "";
+}
+
+function renderListingPhoto(property) {
+  const url = listingPhoto(property);
+  if (!hasDisplayValue(url)) return "";
+  return `
+    <div class="listing-photo">
+      <img src="${escapeHtml(url)}" alt="${escapeHtml(property.address || "Property photo")}" loading="lazy">
+    </div>
+  `;
+}
+
 function evidenceChip(label, value, className = "") {
   if (!hasDisplayValue(value)) return "";
   return `<span class="market-metric ${className}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></span>`;
@@ -724,10 +739,10 @@ function marketEvidenceStrip(property) {
 
 function sortChipValue(property) {
   const sorts = activeSortFields();
-  if (!sorts.length) return "<span>Sort: none</span>";
+  if (!sorts.length) return "<span><small>Filter:</small><strong>None</strong></span>";
   return sorts.map(({ field, direction }, index) => {
     const directionLabel = direction === "desc" ? "↓" : "↑";
-    return `<span>Sort ${index + 1}: <strong>${escapeHtml(columnLabel(field))} ${directionLabel}</strong></span>`;
+    return `<span><small>Filter ${index + 1}:</small><strong>${escapeHtml(columnLabel(field))}</strong><b>${directionLabel}</b></span>`;
   }).join("");
 }
 
@@ -1128,16 +1143,19 @@ function createCard(property) {
   card.innerHTML = `
     <div class="card-grid">
       <div class="card-left">
-        <div class="title-block">
-          <h2 class="address" title="${escapeHtml(property.address || "Unknown address")}">${escapeHtml(compactAddress(property.address))}</h2>
-          <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
-        </div>
-        <div class="primary-metrics">
-          <span><strong>${displayCurrency(currentPrice(property))}</strong><small>Price</small></span>
-          <span><strong>${displayPricePerSqft(property.price_per_sqft)}</strong><small>Price/Sq Ft</small></span>
-          <span><strong>${escapeHtml(bedroomsBathsDisplay(property))}</strong><small>Beds / Baths</small></span>
-          <span><strong>${displayNumber(property.sq_ft)}</strong><small>Sq Ft</small></span>
-          <span><strong>${escapeHtml(lotDisplay(property))}</strong><small>Lot</small></span>
+        ${renderListingPhoto(property)}
+        <div class="card-identity">
+          <div class="title-block">
+            <h2 class="address" title="${escapeHtml(property.address || "Unknown address")}">${escapeHtml(compactAddress(property.address))}</h2>
+            <span class="status-pill ${statusClass(listingStatus)}">${escapeHtml(listingStatus)}</span>
+          </div>
+          <div class="primary-metrics">
+            <span><strong>${displayCurrency(currentPrice(property))}</strong><small>Price</small></span>
+            <span><strong>${displayPricePerSqft(property.price_per_sqft)}</strong><small>Price/Sq Ft</small></span>
+            <span><strong>${escapeHtml(bedroomsBathsDisplay(property))}</strong><small>Beds / Baths</small></span>
+            <span><strong>${displayNumber(property.sq_ft)}</strong><small>Sq Ft</small></span>
+            <span><strong>${escapeHtml(lotDisplay(property))}</strong><small>Lot</small></span>
+          </div>
         </div>
       </div>
 
