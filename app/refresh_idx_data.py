@@ -16,6 +16,7 @@ try:
         value_for_header,
     )
     from extract_idx_page import extract_idx_page
+    from enrich_with_idx import download_idx_images
     from rubric import (
         MISSING,
         update_buyer_leverage,
@@ -35,6 +36,7 @@ except ModuleNotFoundError:
         value_for_header,
     )
     from app.extract_idx_page import extract_idx_page
+    from app.enrich_with_idx import download_idx_images
     from app.rubric import (
         MISSING,
         update_buyer_leverage,
@@ -244,10 +246,19 @@ def build_refresh_payload(row_data, idx_data):
     if current_price is not None:
         payload["current_price"] = current_price
 
-    if not is_missing_export_value(idx_data.get("listing_photo_url")):
-        payload["listing_photo_url"] = idx_data.get("listing_photo_url")
-    if not is_missing_export_value(idx_data.get("idx_image_urls")):
-        payload["idx_image_urls"] = idx_data.get("idx_image_urls")
+    image_data = dict(row_data)
+    image_data.update(payload)
+    try:
+        download_idx_images(image_data, idx_data)
+    except Exception as exc:
+        payload["refresh_notes"] = f"{payload['refresh_notes']} IDX image refresh warning: {exc}"
+    else:
+        image_warnings = image_data.get("idx_enrichment_warnings") or []
+        if image_warnings:
+            payload["refresh_notes"] = f"{payload['refresh_notes']} {' '.join(image_warnings)}"
+        for field in ["image_folder", "listing_photo_url", "idx_image_urls"]:
+            if not is_missing_export_value(image_data.get(field)):
+                payload[field] = image_data[field]
 
     price_change_count = extract_price_change_count_1y(
         idx_data,

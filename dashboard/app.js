@@ -694,15 +694,17 @@ function hasEllipsis(value) {
   return text.includes("...") || text.includes("…") || text.includes("%e2%80%a6");
 }
 
-function validZimgUrl(value) {
-  const url = String(value || "").trim();
+const PARAGON_IMAGE_HOSTS = new Set(["zimg.paragon.ice.com", "cdnparap80.paragonrels.com"]);
+
+function validParagonImageUrl(value) {
+  let url = String(value || "").trim();
   if (!url || hasEllipsis(url)) return "";
+  if (url.startsWith("//")) url = `https:${url}`;
   if (!/^https:\/\//i.test(url)) return "";
-  if (!url.includes("zimg.paragon.ice.com")) return "";
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return "";
-    if (parsed.hostname.toLowerCase() !== "zimg.paragon.ice.com") return "";
+    if (!PARAGON_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return "";
     if (!/\.(jpe?g|png|webp)$/i.test(parsed.pathname)) return "";
   } catch (error) {
     return "";
@@ -710,8 +712,8 @@ function validZimgUrl(value) {
   return url;
 }
 
-function zimgImageUrl(value) {
-  return delimitedValues(value).map(validZimgUrl).find(Boolean) || "";
+function paragonImageUrl(value) {
+  return delimitedValues(value).map(validParagonImageUrl).find(Boolean) || "";
 }
 
 function dashboardRelativeImagePath(path) {
@@ -732,14 +734,14 @@ function localIdxImageCandidate(property) {
 
 function thumbnailSources(property) {
   const sources = [];
-  const listingUrl = zimgImageUrl(property.listing_photo_url);
-  if (listingUrl) sources.push({ src: listingUrl, label: "listing_photo_url" });
-
-  const idxUrl = zimgImageUrl(property.idx_image_urls);
-  if (idxUrl && idxUrl !== listingUrl) sources.push({ src: idxUrl, label: "idx_image_urls[0]" });
-
   const localUrl = localIdxImageCandidate(property);
   if (localUrl) sources.push({ src: localUrl, label: "local idx_01.jpg" });
+
+  const listingUrl = paragonImageUrl(property.listing_photo_url);
+  if (listingUrl) sources.push({ src: listingUrl, label: "listing_photo_url" });
+
+  const idxUrl = paragonImageUrl(property.idx_image_urls);
+  if (idxUrl && idxUrl !== listingUrl) sources.push({ src: idxUrl, label: "idx_image_urls[0]" });
 
   if (!sources.length) {
     console.info("Thumbnail source: no valid image found", property.address || property.listing_url || property.idx_url || property);

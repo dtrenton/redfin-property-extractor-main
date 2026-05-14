@@ -10,6 +10,11 @@ from bs4 import BeautifulSoup
 
 JSON_OUTPUT = Path("outputs/idx_property_details.json")
 TEXT_OUTPUT = Path("outputs/idx_property_details.txt")
+ALLOWED_PARAGON_IMAGE_HOSTS = {
+    "zimg.paragon.ice.com",
+    "cdnparap80.paragonrels.com",
+}
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
 REQUIRED_SECTION_HEADINGS = [
     "Primary Features",
@@ -732,17 +737,32 @@ def fetch_printable_html(printable_url, result):
         return None
 
 
+def normalize_idx_image_url(value):
+    url = str(value or "").strip().rstrip(".,);]")
+    if url.startswith("//"):
+        url = f"https:{url}"
+    if not url.lower().startswith("https://"):
+        return None
+
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in ALLOWED_PARAGON_IMAGE_HOSTS:
+        return None
+    if not parsed.path.lower().endswith(IMAGE_EXTENSIONS):
+        return None
+    return url
+
+
 def extract_idx_image_urls(html):
     pattern = re.compile(
-        r"https://zimg\.paragon\.ice\.com/[^\s\"'<>\\)]+?\.(?:jpe?g|png|webp)",
+        r"(?:https:)?//(?:zimg\.paragon\.ice\.com|cdnparap80\.paragonrels\.com)/[^\s\"'<>\\)]+?\.(?:jpe?g|png|webp)",
         re.IGNORECASE,
     )
     urls = []
     seen = set()
     for match in pattern.finditer(html or ""):
-        url = match.group(0).rstrip(".,);]")
-        parsed_path = urlparse(url).path.lower()
-        if not parsed_path.endswith((".jpg", ".jpeg", ".png", ".webp")):
+        url = normalize_idx_image_url(match.group(0))
+        if not url:
             continue
         if url not in seen:
             urls.append(url)
@@ -775,7 +795,7 @@ def extract_idx_page(url):
     result["idx_image_urls"] = extract_idx_image_urls(html)
     result["listing_photo_url"] = result["idx_image_urls"][0] if result["idx_image_urls"] else None
     if not result["idx_image_urls"]:
-        result["debug"]["warnings"].append("No zimg.paragon.ice.com IDX image URLs found.")
+        result["debug"]["warnings"].append("No allowed Paragon IDX image URLs found.")
     result.update(extract_top_level_fields(text, fields))
     result["derived"] = derive_normalized_fields(fields, result["debug"], result.get("full_baths"))
     result["rooms"] = derive_rooms(fields, result["debug"])

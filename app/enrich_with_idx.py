@@ -8,7 +8,7 @@ from urllib.parse import parse_qsl, unquote, urlparse
 import requests
 
 try:
-    from extract_idx_page import extract_idx_page
+    from extract_idx_page import extract_idx_page, normalize_idx_image_url
     from normalize_property import MISSING
     from rubric import (
         recalculate_price_per_sqft,
@@ -20,7 +20,7 @@ try:
         update_strategy_category,
     )
 except ModuleNotFoundError:
-    from app.extract_idx_page import extract_idx_page
+    from app.extract_idx_page import extract_idx_page, normalize_idx_image_url
     from app.normalize_property import MISSING
     from app.rubric import (
         recalculate_price_per_sqft,
@@ -63,7 +63,7 @@ IDX_ONLY_FIELDS = [
     "listing_photo_url",
     "idx_image_urls",
 ]
-IDX_IMAGE_WARNING = "No zimg.paragon.ice.com IDX image URLs found; image list left empty."
+IDX_IMAGE_WARNING = "No allowed Paragon IDX image URLs found; existing local images preserved if present."
 
 
 def load_json(path):
@@ -361,7 +361,10 @@ def add_idx_warning(enriched, warning):
 
 
 def idx_image_extension(url):
-    suffix = Path(urlparse(url).path).suffix.lower().lstrip(".")
+    normalized_url = normalize_idx_image_url(url)
+    if not normalized_url:
+        return None
+    suffix = Path(urlparse(normalized_url).path).suffix.lower().lstrip(".")
     if suffix == "jpeg":
         return "jpg"
     if suffix in {"jpg", "png", "webp"}:
@@ -390,6 +393,20 @@ def clean_existing_listing_images(output_folder):
                 path.unlink()
 
 
+def existing_idx_images(output_folder):
+    images = []
+    for path in sorted(output_folder.glob("idx_*.*")):
+        if path.is_file():
+            images.append(
+                {
+                    "filename": path.name,
+                    "path": str(path),
+                    "source_url": MISSING,
+                }
+            )
+    return images
+
+
 def write_idx_image_manifest(enriched, images):
     output_folder = idx_image_folder(enriched)
     output_folder.mkdir(parents=True, exist_ok=True)
@@ -399,6 +416,8 @@ def write_idx_image_manifest(enriched, images):
         "mls_number": enriched.get("mls_number") or MISSING,
         "address": enriched.get("address") or MISSING,
         "image_folder": str(output_folder),
+        "listing_photo_url": enriched.get("listing_photo_url") or MISSING,
+        "idx_image_urls": enriched.get("idx_image_urls") or [],
         "images": images,
     }
     with open(output_folder / "manifest.json", "w", encoding="utf-8") as f:
@@ -406,22 +425,44 @@ def write_idx_image_manifest(enriched, images):
     enriched["image_folder"] = str(output_folder)
 
 
-def download_idx_images(enriched, idx_data):
-    urls = idx_data.get("idx_image_urls") or []
-    enriched["idx_image_urls"] = urls
-    enriched["listing_photo_url"] = urls[0] if urls else MISSING
+def normalize_idx_image_urls(urls):
+    if isinstance(urls, str):
+        urls = re.split(r"\s*\|\s*|\s*,\s*", urls)
+    normalized = []
+    seen = set()
+    for url in urls or []:
+        clean_url = normalize_idx_image_url(url)
+        if clean_url and clean_url not in seen:
+            normalized.append(clean_url)
+            seen.add(clean_url)
+    return normalized
 
+
+def download_idx_images(enriched, idx_data):
+    raw_urls = idx_data.get("idx_image_urls") or []
+    if not raw_urls and idx_data.get("listing_photo_url"):
+        raw_urls = [idx_data.get("listing_photo_url")]
+    urls = normalize_idx_image_urls(raw_urls)
     output_folder = idx_image_folder(enriched)
     output_folder.mkdir(parents=True, exist_ok=True)
-    clean_existing_listing_images(output_folder)
+    manifest_path = output_folder / "manifest.json"
 
     if not urls:
         add_idx_warning(enriched, IDX_IMAGE_WARNING)
-        write_idx_image_manifest(enriched, [])
+        if is_fillable_value(enriched.get("idx_image_urls")):
+            enriched["idx_image_urls"] = MISSING
+        if is_fillable_value(enriched.get("listing_photo_url")):
+            enriched["listing_photo_url"] = MISSING
+        enriched["image_folder"] = str(output_folder)
+        if not manifest_path.exists():
+            write_idx_image_manifest(enriched, existing_idx_images(output_folder))
         print(f"IDX image warning: {IDX_IMAGE_WARNING}")
         return
 
-    images = []
+    enriched["idx_image_urls"] = urls
+    enriched["listing_photo_url"] = urls[0]
+
+    downloaded = []
     session = requests.Session()
     for index, url in enumerate(urls, start=1):
         extension = idx_image_extension(url)
@@ -429,16 +470,33 @@ def download_idx_images(enriched, idx_data):
             continue
 
         filename = f"idx_{index:02d}.{extension}"
-        output_path = output_folder / filename
-        response = session.get(
-            url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; redfin-property-extractor/1.0)"},
-            timeout=30,
-        )
-        response.raise_for_status()
-        with open(output_path, "wb") as f:
-            f.write(response.content)
+        try:
+            response = session.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; redfin-property-extractor/1.0)"},
+                timeout=30,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            add_idx_warning(enriched, f"IDX image download failed for {url}: {exc}")
+            continue
+        downloaded.append((filename, response.content, url))
 
+    if not downloaded:
+        warning = "No IDX images downloaded; existing local images preserved if present."
+        add_idx_warning(enriched, warning)
+        enriched["image_folder"] = str(output_folder)
+        if not manifest_path.exists():
+            write_idx_image_manifest(enriched, existing_idx_images(output_folder))
+        print(f"IDX image warning: {warning}")
+        return
+
+    clean_existing_listing_images(output_folder)
+    images = []
+    for filename, content, url in downloaded:
+        output_path = output_folder / filename
+        with open(output_path, "wb") as f:
+            f.write(content)
         images.append(
             {
                 "filename": filename,
@@ -472,6 +530,8 @@ def apply_idx_unavailable_fallback(enriched):
     add_idx_warning(enriched, IDX_UNAVAILABLE_WARNING)
 
     for field in IDX_ONLY_FIELDS:
+        if field in {"listing_photo_url", "idx_image_urls"}:
+            continue
         if is_fillable_value(enriched.get(field)):
             enriched[field] = MISSING
 
@@ -713,7 +773,6 @@ def merge_idx_details(scored_property, idx_data, idx_url, mls_number):
         download_idx_images(enriched, idx_data)
     except requests.RequestException as exc:
         add_idx_warning(enriched, f"IDX image download failed: {exc}")
-        write_idx_image_manifest(enriched, [])
 
     apply_basement_interpretation(enriched, idx_data)
     apply_fence_interpretation(enriched, idx_data)

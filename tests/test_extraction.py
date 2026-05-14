@@ -386,8 +386,14 @@ def test_sheet_export_includes_price_refresh_fields():
     assert values["refresh_success"] == "TRUE"
 
 
-def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite():
+def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite(monkeypatch):
     from refresh_idx_data import build_refresh_payload, safe_updates_for_row
+
+    def fake_download_idx_images(enriched, idx_data):
+        enriched["listing_photo_url"] = idx_data["listing_photo_url"]
+        enriched["idx_image_urls"] = [idx_data["listing_photo_url"]]
+
+    monkeypatch.setattr("refresh_idx_data.download_idx_images", fake_download_idx_images)
 
     row_data = {
         "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
@@ -471,6 +477,7 @@ def test_idx_image_url_extraction_accepts_only_zimg_direct_images():
         <body>
           <img src="{idx_url}">
           <img src="https://www.redfin.com/photo.jpg">
+          <img src="//cdnparap80.paragonrels.com/ParagonImages/Property/PI/RASE/22603373/0/front.jpeg">
           <img src="https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.JPG">
           <img src="https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.webp">
           <img src="https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/not-image.pdf">
@@ -479,6 +486,7 @@ def test_idx_image_url_extraction_accepts_only_zimg_direct_images():
     """
 
     assert extract_idx_image_urls(html) == [
+        "https://cdnparap80.paragonrels.com/ParagonImages/Property/PI/RASE/22603373/0/front.jpeg",
         "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.JPG",
         "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.webp",
     ]
@@ -520,24 +528,41 @@ def test_idx_image_download_writes_sequential_manifest_only(monkeypatch, tmp_pat
 
     manifest = json.loads((image_folder / "manifest.json").read_text(encoding="utf-8"))
     assert [image["filename"] for image in manifest["images"]] == ["idx_01.jpg", "idx_02.webp"]
+    assert manifest["listing_photo_url"] == idx_data["idx_image_urls"][0]
+    assert manifest["idx_image_urls"] == idx_data["idx_image_urls"]
     assert all("zimg.paragon.ice.com" in image["source_url"] for image in manifest["images"])
 
 
-def test_idx_image_download_empty_list_warns_without_redfin_fallback(tmp_path):
+def test_idx_image_download_empty_list_preserves_existing_local_images(tmp_path):
+    image_folder = tmp_path / "1105-n-kiwanis-ave"
+    image_folder.mkdir()
+    existing_image = image_folder / "idx_01.jpg"
+    existing_image.write_bytes(b"existing-image")
+    existing_manifest = {
+        "listing_photo_url": "https://zimg.paragon.ice.com/old/front.jpg",
+        "idx_image_urls": ["https://zimg.paragon.ice.com/old/front.jpg"],
+        "images": [{"filename": "idx_01.jpg", "path": str(existing_image), "source_url": "https://zimg.paragon.ice.com/old/front.jpg"}],
+    }
+    (image_folder / "manifest.json").write_text(json.dumps(existing_manifest), encoding="utf-8")
+
     enriched = {
         "listing_url": "https://www.redfin.com/SD/Sioux-Falls/example/home/1",
         "idx_url": "https://rase-inc.idxbroker.com/idx/details/listing/c239/22603373?printable=1",
         "mls_number": "22603373",
         "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
-        "image_folder": str(tmp_path / "1105-n-kiwanis-ave"),
+        "image_folder": str(image_folder),
+        "listing_photo_url": "https://zimg.paragon.ice.com/old/front.jpg",
+        "idx_image_urls": ["https://zimg.paragon.ice.com/old/front.jpg"],
     }
 
     download_idx_images(enriched, {"idx_image_urls": []})
 
-    manifest = json.loads((Path(enriched["image_folder"]) / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["images"] == []
-    assert enriched["listing_photo_url"] == MISSING
-    assert any("No zimg.paragon.ice.com" in warning for warning in enriched["idx_enrichment_warnings"])
+    manifest = json.loads((image_folder / "manifest.json").read_text(encoding="utf-8"))
+    assert existing_image.exists()
+    assert existing_image.read_bytes() == b"existing-image"
+    assert manifest == existing_manifest
+    assert enriched["listing_photo_url"] == "https://zimg.paragon.ice.com/old/front.jpg"
+    assert any("No allowed Paragon" in warning for warning in enriched["idx_enrichment_warnings"])
 
 
 def test_process_all_pdfs_does_not_call_redfin_pdf_image_extraction():
