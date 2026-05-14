@@ -333,6 +333,8 @@ def placeholder_for_header(header, data):
         return "No Info"
     if header in DASH_PLACEHOLDER_HEADERS:
         return "-"
+    if header == "days_on_redfin":
+        return 5
     if header in MARKET_TIMING_HEADERS:
         return "<6 days"
     if header in STRUCTURAL_HEADERS:

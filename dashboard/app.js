@@ -247,8 +247,20 @@ function parseNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseDomCell(value) {
+  const numeric = parseNumber(value);
+  if (numeric !== null) return numeric;
+
+  const underMatch = String(value ?? "").trim().match(/^<\s*(\d+(?:\.\d+)?)\s*days?$/i);
+  if (!underMatch) return null;
+
+  const upperBound = Number(underMatch[1]);
+  if (!Number.isFinite(upperBound)) return null;
+  return Math.max(0, upperBound - 1);
+}
+
 function parseDomValue(property) {
-  return parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+  return parseDomCell(property.current_dom) ?? parseDomCell(property.days_on_redfin);
 }
 
 function parseDateValue(value) {
@@ -449,7 +461,7 @@ function domDisplay(property) {
 }
 
 function compactDomDisplay(property) {
-  const days = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+  const days = parseDomValue(property);
   if (days !== null) return `${formatNumber(days)}d`;
   if (hasDisplayValue(property.dom_status)) return property.dom_status;
   return "—";
@@ -488,7 +500,7 @@ function hasPriceDrop(property) {
 function pendingDays(property) {
   const match = String(property.pending_speed || "").match(/(\d+)/);
   if (match) return Number(match[1]);
-  return parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+  return parseDomValue(property);
 }
 
 function backOnMarketDisplay(property) {
@@ -497,7 +509,7 @@ function backOnMarketDisplay(property) {
     const relists = relistCount(property);
     return relists > 1 ? `Relisted ${formatNumber(relists)}x` : "";
   }
-  const dom = parseNumber(property.current_dom);
+  const dom = parseDomCell(property.current_dom);
   if (dom !== null && dom <= 3) return `Back on Market • ${formatNumber(dom)}d`;
   const relists = relistCount(property);
   return relists > 1 ? `Relisted ${formatNumber(relists)}x` : "Relisted";
@@ -515,7 +527,7 @@ function marketHeat(property) {
   const viewsPerDay = parseNumber(property.views_per_day);
   const favoritesPerDay = parseNumber(property.favorites_per_day);
   const conversion = parseNumber(property.favorite_conversion_rate);
-  const days = parseNumber(property.days_on_redfin);
+  const days = parseDomValue(property);
   const status = normalizeText(listingStatusDisplay(property.listing_status));
   const signal = normalizeText(property.buyer_interest_signal);
   const priceChanges = parseNumber(property.price_change_count_1y);
@@ -837,7 +849,7 @@ function renderBuyerInterestScale(property) {
 }
 
 function domSignalClass(property) {
-  const dom = parseNumber(property.current_dom) ?? parseNumber(property.days_on_redfin);
+  const dom = parseDomValue(property);
   if (dom === null) return "signal-neutral";
   if (dom <= 7) return "signal-active";
   if (dom > 21) return "signal-warning";
@@ -1094,10 +1106,10 @@ function getFilteredProperties() {
 
       const dom = parseDomValue(property);
       const matchesDom = domFilter === "all"
-        || (domFilter === "under-6" && dom !== null && dom <= 6)
-        || (domFilter === "8-21" && dom !== null && dom >= 8 && dom <= 21)
-        || (domFilter === "22-60" && dom !== null && dom >= 22 && dom <= 60)
-        || (domFilter === "60-plus" && dom !== null && dom > 60);
+        || (domFilter === "0-7" && dom !== null && dom >= 0 && dom <= 7)
+        || (domFilter === "8-14" && dom !== null && dom >= 8 && dom <= 14)
+        || (domFilter === "15-30" && dom !== null && dom >= 15 && dom <= 30)
+        || (domFilter === "31-plus" && dom !== null && dom >= 31);
 
       const drop = hasPriceDrop(property);
       const matchesDrop = priceDropFilter === "all"
@@ -1182,6 +1194,10 @@ function sortProperties(a, b) {
 
 function sortableValue(property, column) {
   const raw = column === "garage_fit" ? getGarageFit(property) : property[column];
+  if (column === "current_dom" || column === "days_on_redfin") {
+    const dom = parseDomValue(property);
+    return dom === null ? { empty: true } : { empty: false, type: "number", value: dom };
+  }
   if (
     raw === null
     || raw === undefined

@@ -386,6 +386,21 @@ def test_sheet_export_includes_price_refresh_fields():
     assert values["refresh_success"] == "TRUE"
 
 
+def test_sheet_export_codes_missing_days_on_redfin_as_numeric_dom():
+    from append_to_sheet import build_row, desired_headers
+
+    data = {
+        "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
+        "days_on_redfin": MISSING,
+    }
+
+    headers = desired_headers(data)
+    row = build_row(data, headers)
+    values = dict(zip(headers, row))
+
+    assert values["days_on_redfin"] == 5
+
+
 def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite(monkeypatch):
     from refresh_idx_data import build_refresh_payload, safe_updates_for_row
 
