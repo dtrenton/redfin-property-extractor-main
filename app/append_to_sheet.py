@@ -363,7 +363,7 @@ def value_for_header(data, header):
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if header == "refresh_success" and is_missing_export_value(data.get(header)):
-        return "Yes" if data.get("idx_enrichment_status") in {"success", "unavailable"} else ""
+        return "TRUE" if data.get("idx_enrichment_status") in {"success", "unavailable"} else ""
 
     idx_fallbacks = {
         "construction_materials": lambda: first_idx_section_value(data, ["Construction Materials"]),
@@ -403,7 +403,7 @@ def value_for_header(data, header):
             data.get("price_before_reduction")
             or first_idx_section_value(data, ["Price Before Reduction"])
         )
-        current_price = numeric_value(data.get("price"))
+        current_price = numeric_value(data.get("current_price") or data.get("price"))
         reduction_amount = None
         if price_before_reduction is not None and current_price is not None:
             reduction_amount = price_before_reduction - current_price
@@ -557,7 +557,7 @@ def refresh_row_payload(row_data):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     payload = {
         "last_checked": now,
-        "refresh_success": "No",
+        "refresh_success": "FALSE",
         "refresh_notes": "",
     }
 
@@ -592,7 +592,7 @@ def refresh_row_payload(row_data):
     elif existing_cell(row_data, "listing_status"):
         payload["current_status"] = existing_cell(row_data, "listing_status")
 
-    payload["refresh_success"] = "Yes"
+    payload["refresh_success"] = "TRUE"
     payload["refresh_notes"] = "IDX refresh completed."
     return payload
 
@@ -647,7 +647,7 @@ def refresh_existing_rows():
         end_col = column_letter(len(header_row))
         sheet.update(range_name=f"A{row_number}:{end_col}{row_number}", values=[next_row])
 
-        if updates.get("refresh_success") == "Yes":
+        if str(updates.get("refresh_success", "")).upper() in {"TRUE", "YES"}:
             refreshed += 1
         else:
             failed += 1

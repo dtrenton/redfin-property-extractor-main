@@ -12,6 +12,7 @@ try:
         numeric_value,
         row_dict_from_values,
         set_row_values,
+        value_for_header,
     )
     from extract_idx_page import extract_idx_page
     from rubric import (
@@ -29,6 +30,7 @@ except ModuleNotFoundError:
         numeric_value,
         row_dict_from_values,
         set_row_values,
+        value_for_header,
     )
     from app.extract_idx_page import extract_idx_page
     from app.rubric import (
@@ -68,6 +70,16 @@ REFRESH_HEADERS = [
     "live_market_interest_flags",
     "buyer_leverage_score",
     "buyer_leverage_flags",
+]
+
+PRICE_REDUCTION_LABELS = [
+    "Price Before Reduction",
+    "Previous Price",
+    "Original Price",
+]
+
+PRICE_REDUCTION_DATE_LABELS = [
+    "Price Reduction Date",
 ]
 
 NUMERIC_FIELDS = [
@@ -213,7 +225,7 @@ def extract_price_change_count_1y(idx_data, existing_value):
 def build_refresh_payload(row_data, idx_data):
     payload = {
         "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "refresh_success": "Yes",
+        "refresh_success": "TRUE",
         "refresh_notes": "IDX refresh completed.",
     }
 
@@ -239,8 +251,8 @@ def build_refresh_payload(row_data, idx_data):
     if price_change_count is not None:
         payload["price_change_count_1y"] = price_change_count
 
-    price_before_reduction = numeric_value(first_section_value(idx_data, ["Price Before Reduction"]))
-    price_reduction_date = first_section_value(idx_data, ["Price Reduction Date"])
+    price_before_reduction = numeric_value(first_section_value(idx_data, PRICE_REDUCTION_LABELS))
+    price_reduction_date = first_section_value(idx_data, PRICE_REDUCTION_DATE_LABELS)
     if price_before_reduction and current_price and price_before_reduction > current_price:
         reduction_amount = price_before_reduction - current_price
         payload["price_before_reduction"] = price_before_reduction
@@ -277,6 +289,28 @@ def build_refresh_payload(row_data, idx_data):
     return payload
 
 
+def format_refresh_updates_for_sheet(row_data, payload):
+    formatted = dict(payload)
+    merged = dict(row_data)
+    merged.update(payload)
+
+    for header in [
+        "price_before_reduction",
+        "price_reduction_date",
+        "price_reduction_amount",
+        "price_reduction_pct",
+        "last_checked",
+        "refresh_success",
+    ]:
+        if header not in formatted:
+            continue
+        formatted_value = value_for_header(merged, header)
+        if not is_missing_export_value(formatted_value):
+            formatted[header] = formatted_value
+
+    return formatted
+
+
 def row_identifier(row_data):
     return (
         row_data.get("listing_url")
@@ -288,7 +322,7 @@ def row_identifier(row_data):
 
 def safe_updates_for_row(row_data, payload):
     updates = {}
-    for header, value in payload.items():
+    for header, value in format_refresh_updates_for_sheet(row_data, payload).items():
         if header in SNAPSHOT_ONLY_FIELDS:
             continue
         if is_missing_export_value(value) and not header.startswith("refresh_"):
@@ -378,7 +412,7 @@ def main():
             stats["idx_failures"] += 1
             payload = {
                 "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "refresh_success": "No",
+                "refresh_success": "FALSE",
                 "refresh_notes": f"IDX fetch failed: {exc}",
             }
             updates = safe_updates_for_row(row_data, payload)
@@ -392,7 +426,7 @@ def main():
             stats["idx_failures"] += 1
             payload = {
                 "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "refresh_success": "No",
+                "refresh_success": "FALSE",
                 "refresh_notes": "; ".join(str(error) for error in errors),
             }
         else:

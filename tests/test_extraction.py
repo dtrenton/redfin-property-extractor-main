@@ -339,3 +339,87 @@ def test_scored_output_uses_buyer_leverage_terms():
     assert all("leverage" not in key or key.startswith("buyer_") for key in scored)
     assert scored["strategy_fit_score"] == MISSING
     assert scored["strategy_fit_flags"] == []
+
+
+def test_sheet_export_includes_price_refresh_fields():
+    from append_to_sheet import build_row, desired_headers
+
+    data = {
+        "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
+        "price": "199,900",
+        "current_price": 199900,
+        "price_before_reduction": 229900,
+        "price_reduction_date": "2026-04-16T00:00:00",
+        "last_checked": "2026-05-13 22:45:00",
+        "refresh_success": "TRUE",
+    }
+    headers = desired_headers(data)
+    required = [
+        "price_before_reduction",
+        "price_reduction_date",
+        "price_reduction_amount",
+        "price_reduction_pct",
+        "last_checked",
+        "refresh_success",
+    ]
+
+    assert all(header in headers for header in required)
+
+    row = build_row(data, headers)
+    values = dict(zip(headers, row))
+
+    assert values["price_before_reduction"] == "$229,900"
+    assert values["price_reduction_date"] == "04/16/2026"
+    assert values["price_reduction_amount"] == "$30,000"
+    assert values["price_reduction_pct"] == "13.0%"
+    assert values["last_checked"] == "2026-05-13 22:45:00"
+    assert values["refresh_success"] == "TRUE"
+
+
+def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite():
+    from refresh_idx_data import build_refresh_payload, safe_updates_for_row
+
+    row_data = {
+        "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
+        "price": "199,900",
+        "price_change_count_1y": "1",
+        "listed_count_1y": "1",
+        "listing_removed_count_1y": "0",
+    }
+    idx_data = {
+        "mls_status": "Active - Active",
+        "price": "$199,900",
+        "listing_photo_url": "https://example.test/home-photo.jpg",
+        "sections": {
+            "Financial": {
+                "Price Before Reduction": "$229,900",
+                "Price Reduction Date": "2026-04-16T00:00:00",
+            }
+        },
+        "debug": {"errors": []},
+    }
+
+    payload = build_refresh_payload(row_data, idx_data)
+    updates = safe_updates_for_row(row_data, payload)
+
+    assert updates["price_before_reduction"] == "$229,900"
+    assert updates["price_reduction_date"] == "04/16/2026"
+    assert updates["price_reduction_amount"] == "$30,000"
+    assert updates["price_reduction_pct"] == "13.0%"
+    assert updates["last_checked"]
+    assert updates["refresh_success"] == "TRUE"
+    assert updates["listing_photo_url"] == "https://example.test/home-photo.jpg"
+
+    existing = {"price_before_reduction": "$229,900"}
+    blank_updates = safe_updates_for_row(
+        existing,
+        {
+            "last_checked": "2026-05-13 22:45:00",
+            "refresh_success": "FALSE",
+            "price_before_reduction": "",
+        },
+    )
+
+    assert "price_before_reduction" not in blank_updates
+    assert blank_updates["last_checked"] == "2026-05-13 22:45:00"
+    assert blank_updates["refresh_success"] == "FALSE"

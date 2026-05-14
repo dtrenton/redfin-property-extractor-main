@@ -475,6 +475,20 @@ select:focus {
   background: #e3e9ec;
 }
 
+.market-row .buyer-interest-scale {
+  display: grid;
+}
+
+.market-row .interest-meter {
+  display: grid;
+  min-height: 8px;
+}
+
+.market-row .interest-segment {
+  display: block;
+  min-height: 8px;
+}
+
 .interest-segment:nth-child(1).active {
   background: #f4df83;
 }
