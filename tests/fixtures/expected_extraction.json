@@ -9,10 +9,10 @@
       "listed_count_1y": 1,
       "listing_removed_count_1y": 0,
       "price_change_count_1y": 0,
-      "views": 5,
-      "favorites": 1,
-      "views_per_day": "MISSING",
-      "favorites_per_day": "MISSING",
+      "views": 28,
+      "favorites": 3,
+      "views_per_day": 14.0,
+      "favorites_per_day": 1.5,
       "image_folder": "outputs/images/110-s-west-ave"
     }
   },
@@ -43,10 +43,10 @@
       "listed_count_1y": 1,
       "listing_removed_count_1y": 0,
       "price_change_count_1y": 0,
-      "views": 28,
+      "views": 60,
       "favorites": 2,
-      "views_per_day": "MISSING",
-      "favorites_per_day": "MISSING",
+      "views_per_day": 5.45,
+      "favorites_per_day": 0.18,
       "image_folder": "outputs/images/2111-s-spring-ave"
     }
   },

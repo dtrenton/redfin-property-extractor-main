@@ -929,6 +929,10 @@ def main():
     update_final_decision(data)
     update_strategy_category(data)
 
+    # Legacy sheet/dashboard compatibility: strategy fit is no longer a
+    # decision engine, but downstream exports still expect these fields.
+    data.setdefault("strategy_fit_score", MISSING)
+    data.setdefault("strategy_fit_flags", [])
 
     # Save
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
