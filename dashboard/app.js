@@ -667,20 +667,42 @@ function renderFeatureChip(item) {
 
 function firstDelimitedValue(value) {
   if (!hasDisplayValue(value)) return "";
-  return String(value)
-    .split(/[|,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean)[0] || "";
+  return delimitedValues(value)[0] || "";
 }
 
-function zimgImageUrl(value) {
-  const url = firstDelimitedValue(value);
-  if (!url) return "";
-  if (!/^https?:\/\//i.test(url)) return "";
+function delimitedValues(value) {
+  if (!hasDisplayValue(value)) return [];
+  const text = String(value).trim();
+  if (text.startsWith("[") && text.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item).trim()).filter(Boolean);
+      }
+    } catch (error) {
+      // Fall through to delimiter parsing for sheet text that only resembles JSON.
+    }
+  }
+  return text
+    .split(/[|,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function hasEllipsis(value) {
+  const text = String(value || "").toLowerCase();
+  return text.includes("...") || text.includes("…") || text.includes("%e2%80%a6");
+}
+
+function validZimgUrl(value) {
+  const url = String(value || "").trim();
+  if (!url || hasEllipsis(url)) return "";
+  if (!/^https:\/\//i.test(url)) return "";
   if (!url.includes("zimg.paragon.ice.com")) return "";
   try {
     const parsed = new URL(url);
-    if (!parsed.hostname.toLowerCase().endsWith("zimg.paragon.ice.com")) return "";
+    if (parsed.protocol !== "https:") return "";
+    if (parsed.hostname.toLowerCase() !== "zimg.paragon.ice.com") return "";
     if (!/\.(jpe?g|png|webp)$/i.test(parsed.pathname)) return "";
   } catch (error) {
     return "";
@@ -688,12 +710,16 @@ function zimgImageUrl(value) {
   return url;
 }
 
+function zimgImageUrl(value) {
+  return delimitedValues(value).map(validZimgUrl).find(Boolean) || "";
+}
+
 function dashboardRelativeImagePath(path) {
   if (!hasDisplayValue(path)) return "";
   const cleanPath = String(path).trim();
-  if (/^https?:\/\//i.test(cleanPath) || cleanPath.startsWith("../") || cleanPath.startsWith("./")) {
-    return cleanPath;
-  }
+  if (hasEllipsis(cleanPath) || cleanPath.startsWith("/Users/")) return "";
+  if (/^https?:\/\//i.test(cleanPath)) return "";
+  if (cleanPath.startsWith("../") || cleanPath.startsWith("./")) return cleanPath;
   if (cleanPath.startsWith("outputs/")) return `../${cleanPath}`;
   return cleanPath;
 }
@@ -704,21 +730,78 @@ function localIdxImageCandidate(property) {
   return `${folder.replace(/\/$/, "")}/idx_01.jpg`;
 }
 
-function listingPhoto(property) {
-  return zimgImageUrl(property.listing_photo_url)
-    || zimgImageUrl(property.idx_image_urls)
-    || localIdxImageCandidate(property)
-    || "";
+function thumbnailSources(property) {
+  const sources = [];
+  const listingUrl = zimgImageUrl(property.listing_photo_url);
+  if (listingUrl) sources.push({ src: listingUrl, label: "listing_photo_url" });
+
+  const idxUrl = zimgImageUrl(property.idx_image_urls);
+  if (idxUrl && idxUrl !== listingUrl) sources.push({ src: idxUrl, label: "idx_image_urls[0]" });
+
+  const localUrl = localIdxImageCandidate(property);
+  if (localUrl) sources.push({ src: localUrl, label: "local idx_01.jpg" });
+
+  if (!sources.length) {
+    console.info("Thumbnail source: no valid image found", property.address || property.listing_url || property.idx_url || property);
+  }
+  return sources;
 }
 
 function renderListingPhoto(property) {
-  const url = listingPhoto(property);
-  if (!hasDisplayValue(url)) return "";
+  const sources = thumbnailSources(property);
+  if (!sources.length) {
+    return `<div class="listing-photo no-image" aria-label="No image">No Image</div>`;
+  }
+  console.info(`Thumbnail source: using ${sources[0].label}`, property.address || "", sources[0].src);
+  const encodedSources = escapeHtml(JSON.stringify(sources));
   return `
-    <div class="listing-photo">
-      <img src="${escapeHtml(url)}" alt="${escapeHtml(property.address || "Property photo")}" loading="lazy" onerror="this.closest('.listing-photo').remove()">
+    <div class="listing-photo" data-sources="${encodedSources}" data-source-index="0">
+      <img src="${escapeHtml(sources[0].src)}" alt="${escapeHtml(property.address || "Property photo")}" loading="lazy">
     </div>
   `;
+}
+
+function installThumbnailFallbacks(scope = document) {
+  scope.querySelectorAll(".listing-photo[data-sources]").forEach((container) => {
+    const image = container.querySelector("img");
+    if (!image || image.dataset.fallbackReady === "true") return;
+    image.dataset.fallbackReady = "true";
+    image.addEventListener("error", () => {
+      let sources = [];
+      try {
+        sources = JSON.parse(container.dataset.sources || "[]");
+      } catch (error) {
+        sources = [];
+      }
+      const nextIndex = Number(container.dataset.sourceIndex || 0) + 1;
+      const nextSource = sources[nextIndex];
+      if (nextSource) {
+        container.dataset.sourceIndex = String(nextIndex);
+        console.info(`Thumbnail source: using ${nextSource.label}`, nextSource.src);
+        image.src = nextSource.src;
+        return;
+      }
+      console.info("Thumbnail source: no valid image found after load failures", image.alt || "");
+      image.remove();
+      container.removeAttribute("data-sources");
+      container.classList.add("no-image");
+      container.textContent = "No Image";
+      container.setAttribute("aria-label", "No image");
+    });
+  });
+}
+
+function logThumbnailDataQuality(rows) {
+  rows.forEach((property) => {
+    ["listing_photo_url", "idx_image_urls"].forEach((field) => {
+      const rawValue = property[field];
+      if (!hasDisplayValue(rawValue)) return;
+      const hasBadValue = delimitedValues(rawValue).some((value) => hasEllipsis(value) || value.startsWith("/Users/"));
+      if (hasBadValue) {
+        console.warn(`Thumbnail source ignored invalid ${field}`, property.address || "", rawValue);
+      }
+    });
+  });
 }
 
 function evidenceChip(label, value, className = "") {
@@ -1132,6 +1215,7 @@ function renderCards(data) {
     fragment.append(createCard(property, index));
   });
   elements.cards.append(fragment);
+  installThumbnailFallbacks(elements.cards);
 }
 
 function detailFieldsForSection(property, section, usedFields) {
@@ -1284,6 +1368,7 @@ async function loadData() {
   }
 
   console.log(`Loaded ${parsedProperties.length} properties from CSV`);
+  logThumbnailDataQuality(parsedProperties);
   return parsedProperties;
 }
 
