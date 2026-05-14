@@ -2,7 +2,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -732,113 +732,22 @@ def fetch_printable_html(printable_url, result):
         return None
 
 
-def numeric_attr(value):
-    match = re.search(r"\d+", str(value or ""))
-    return int(match.group(0)) if match else None
-
-
-def srcset_urls(value):
-    urls = []
-    for part in str(value or "").split(","):
-        candidate = part.strip().split()
-        if candidate:
-            urls.append(candidate[0])
-    return urls
-
-
-def image_sources(image):
-    attrs = [
-        "src",
-        "data-src",
-        "data-lazy-src",
-        "data-original",
-        "data-lazy",
-        "data-img",
-        "data-full",
-        "data-large",
-        "data-zoom-image",
-    ]
-    sources = [image.get(attr) for attr in attrs if image.get(attr)]
-    sources.extend(srcset_urls(image.get("srcset")))
-    sources.extend(srcset_urls(image.get("data-srcset")))
-    return sources
-
-
-def background_image_sources(soup):
-    for tag in soup.find_all(style=True):
-        style = tag.get("style") or ""
-        for match in re.findall(r"url\(['\"]?([^'\")]+)", style):
-            yield tag, match
-
-
-def extract_listing_photo_url(soup, base_url):
-    skip_terms = re.compile(
-        r"\b(?:logo|banner|icon|agent|headshot|avatar|broker|realtor|map|marker|qr|equal|eho)\b",
+def extract_idx_image_urls(html):
+    pattern = re.compile(
+        r"https://zimg\.paragon\.ice\.com/[^\s\"'<>\\)]+?\.(?:jpe?g|png|webp)",
         re.IGNORECASE,
     )
-    positive_terms = re.compile(r"\b(?:photo|property|listing|primary|main|hero|house|home)\b", re.IGNORECASE)
-    candidates = []
+    urls = []
     seen = set()
-
-    for image in soup.find_all("img"):
-        label_descriptor = " ".join(
-            str(value or "")
-            for value in [
-                image.get("alt"),
-                image.get("title"),
-                " ".join(image.get("class", [])),
-                image.get("id"),
-            ]
-        )
-        if skip_terms.search(label_descriptor):
+    for match in pattern.finditer(html or ""):
+        url = match.group(0).rstrip(".,);]")
+        parsed_path = urlparse(url).path.lower()
+        if not parsed_path.endswith((".jpg", ".jpeg", ".png", ".webp")):
             continue
-
-        width = numeric_attr(image.get("width"))
-        height = numeric_attr(image.get("height"))
-        if width is not None and width < 220:
-            continue
-        if height is not None and height < 140:
-            continue
-
-        for src in image_sources(image):
-            url = urljoin(base_url, src)
-            if url in seen:
-                continue
+        if url not in seen:
+            urls.append(url)
             seen.add(url)
-
-            score = 0
-            if width and height:
-                score += width * height
-            if positive_terms.search(f"{label_descriptor} {url}"):
-                score += 1_000_000
-            candidates.append((score, len(candidates), url))
-
-    for tag, src in background_image_sources(soup):
-        url = urljoin(base_url, src)
-        if url in seen:
-            continue
-
-        label_descriptor = " ".join(
-            str(value or "")
-            for value in [
-                " ".join(tag.get("class", [])),
-                tag.get("id"),
-                tag.get("aria-label"),
-                tag.get("title"),
-            ]
-        )
-        if skip_terms.search(label_descriptor):
-            continue
-
-        seen.add(url)
-        score = 500_000
-        if positive_terms.search(f"{label_descriptor} {url}"):
-            score += 1_000_000
-        candidates.append((score, len(candidates), url))
-
-    if not candidates:
-        return None
-    return sorted(candidates, reverse=True)[0][2]
+    return urls
 
 
 def extract_idx_page(url):
@@ -854,7 +763,6 @@ def extract_idx_page(url):
         return result
 
     text = visible_text_from_html(html)
-    soup = BeautifulSoup(html, "html.parser")
     sections = parse_sections(text, result["debug"])
     if result["debug"]["missing_required_sections"]:
         result["debug"]["warnings"].append(
@@ -864,7 +772,10 @@ def extract_idx_page(url):
     fields = flatten_sections(sections)
     result["sections"] = sections
     result["listing_id"] = derive_listing_id(text, printable_url, fields)
-    result["listing_photo_url"] = extract_listing_photo_url(soup, printable_url)
+    result["idx_image_urls"] = extract_idx_image_urls(html)
+    result["listing_photo_url"] = result["idx_image_urls"][0] if result["idx_image_urls"] else None
+    if not result["idx_image_urls"]:
+        result["debug"]["warnings"].append("No zimg.paragon.ice.com IDX image URLs found.")
     result.update(extract_top_level_fields(text, fields))
     result["derived"] = derive_normalized_fields(fields, result["debug"], result.get("full_baths"))
     result["rooms"] = derive_rooms(fields, result["debug"])

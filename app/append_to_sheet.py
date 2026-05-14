@@ -70,6 +70,7 @@ HEADERS = [
     "refresh_success",
     "image_folder",
     "listing_photo_url",
+    "idx_image_urls",
 ]
 
 IDX_EXPORT_HEADERS = [
@@ -109,6 +110,7 @@ LIVE_REFRESH_HEADERS = [
     "price_reduction_amount",
     "price_reduction_pct",
     "listing_photo_url",
+    "idx_image_urls",
     "refresh_notes",
 ]
 

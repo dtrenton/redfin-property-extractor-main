@@ -16,6 +16,8 @@ from extract_redfin_pdf import (  # noqa: E402
     find_redfin_url,
     image_folder_for_pdf,
 )
+from extract_idx_page import extract_idx_image_urls  # noqa: E402
+from enrich_with_idx import download_idx_images  # noqa: E402
 from normalize_property import MISSING, normalize_property  # noqa: E402
 from rubric import (  # noqa: E402
     calculate_favorite_conversion_rate,
@@ -389,7 +391,7 @@ def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite():
     idx_data = {
         "mls_status": "Active - Active",
         "price": "$199,900",
-        "listing_photo_url": "https://example.test/home-photo.jpg",
+        "listing_photo_url": "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/home-photo.jpg",
         "sections": {
             "Financial": {
                 "Price Before Reduction": "$229,900",
@@ -408,7 +410,7 @@ def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite():
     assert updates["price_reduction_pct"] == "13.0%"
     assert updates["last_checked"]
     assert updates["refresh_success"] == "TRUE"
-    assert updates["listing_photo_url"] == "https://example.test/home-photo.jpg"
+    assert updates["listing_photo_url"] == "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/home-photo.jpg"
 
     existing = {"price_before_reduction": "$229,900"}
     blank_updates = safe_updates_for_row(
@@ -423,3 +425,87 @@ def test_refresh_payload_updates_price_refresh_fields_without_blank_overwrite():
     assert "price_before_reduction" not in blank_updates
     assert blank_updates["last_checked"] == "2026-05-13 22:45:00"
     assert blank_updates["refresh_success"] == "FALSE"
+
+
+def test_idx_image_url_extraction_accepts_only_zimg_direct_images():
+    idx_url = "https://rase-inc.idxbroker.com/idx/details/listing/c239/22603373?printable=1"
+    html = f"""
+      <html>
+        <body>
+          <img src="{idx_url}">
+          <img src="https://www.redfin.com/photo.jpg">
+          <img src="https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.JPG">
+          <img src="https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.webp">
+          <img src="https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/not-image.pdf">
+        </body>
+      </html>
+    """
+
+    assert extract_idx_image_urls(html) == [
+        "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.JPG",
+        "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/photo.webp",
+    ]
+
+
+def test_idx_image_download_writes_sequential_manifest_only(monkeypatch, tmp_path):
+    class FakeResponse:
+        content = b"fake-image-bytes"
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSession:
+        def get(self, url, headers=None, timeout=None):
+            assert "zimg.paragon.ice.com" in url
+            return FakeResponse()
+
+    monkeypatch.setattr("enrich_with_idx.requests.Session", lambda: FakeSession())
+
+    enriched = {
+        "listing_url": "https://www.redfin.com/SD/Sioux-Falls/example/home/1",
+        "idx_url": "https://rase-inc.idxbroker.com/idx/details/listing/c239/22603373?printable=1",
+        "mls_number": "22603373",
+        "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
+        "image_folder": str(tmp_path / "1105-n-kiwanis-ave"),
+    }
+    idx_data = {
+        "idx_image_urls": [
+            "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/front.JPG",
+            "https://zimg.paragon.ice.com/ParagonImages/Property/PI/RASE/22603373/0/kitchen.webp",
+        ]
+    }
+
+    download_idx_images(enriched, idx_data)
+
+    image_folder = Path(enriched["image_folder"])
+    assert (image_folder / "idx_01.jpg").exists()
+    assert (image_folder / "idx_02.webp").exists()
+
+    manifest = json.loads((image_folder / "manifest.json").read_text(encoding="utf-8"))
+    assert [image["filename"] for image in manifest["images"]] == ["idx_01.jpg", "idx_02.webp"]
+    assert all("zimg.paragon.ice.com" in image["source_url"] for image in manifest["images"])
+
+
+def test_idx_image_download_empty_list_warns_without_redfin_fallback(tmp_path):
+    enriched = {
+        "listing_url": "https://www.redfin.com/SD/Sioux-Falls/example/home/1",
+        "idx_url": "https://rase-inc.idxbroker.com/idx/details/listing/c239/22603373?printable=1",
+        "mls_number": "22603373",
+        "address": "1105 N Kiwanis Ave Ave, Sioux Falls, SD 57104",
+        "image_folder": str(tmp_path / "1105-n-kiwanis-ave"),
+    }
+
+    download_idx_images(enriched, {"idx_image_urls": []})
+
+    manifest = json.loads((Path(enriched["image_folder"]) / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["images"] == []
+    assert enriched["listing_photo_url"] == MISSING
+    assert any("No zimg.paragon.ice.com" in warning for warning in enriched["idx_enrichment_warnings"])
+
+
+def test_process_all_pdfs_does_not_call_redfin_pdf_image_extraction():
+    process_file = ROOT / "app" / "process_all_pdfs.py"
+    source = process_file.read_text(encoding="utf-8")
+
+    assert "app/extract_pdf_images.py" not in source
+    assert '("images"' not in source

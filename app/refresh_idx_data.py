@@ -59,6 +59,7 @@ REFRESH_HEADERS = [
     "price_reduction_amount",
     "price_reduction_pct",
     "listing_photo_url",
+    "idx_image_urls",
     "last_checked",
     "refresh_success",
     "refresh_notes",
@@ -243,6 +244,8 @@ def build_refresh_payload(row_data, idx_data):
 
     if not is_missing_export_value(idx_data.get("listing_photo_url")):
         payload["listing_photo_url"] = idx_data.get("listing_photo_url")
+    if not is_missing_export_value(idx_data.get("idx_image_urls")):
+        payload["idx_image_urls"] = idx_data.get("idx_image_urls")
 
     price_change_count = extract_price_change_count_1y(
         idx_data,

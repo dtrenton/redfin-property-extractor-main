@@ -135,7 +135,6 @@ def print_property_summary(pdf_name, summary, status, message=None):
 def process_pdf_locally(pdf_path):
     steps = [
         ("extract", [sys.executable, "app/extract_redfin_pdf.py", str(pdf_path)]),
-        ("images", [sys.executable, "app/extract_pdf_images.py", str(pdf_path)]),
         ("score", [sys.executable, "app/rubric.py"]),
         ("idx_enrich", [sys.executable, "app/enrich_with_idx.py"]),
     ]

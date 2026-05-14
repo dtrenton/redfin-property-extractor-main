@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlparse
 
+import requests
+
 try:
     from extract_idx_page import extract_idx_page
     from normalize_property import MISSING
@@ -59,7 +61,9 @@ IDX_ONLY_FIELDS = [
     "price_reduction_amount",
     "price_reduction_pct",
     "listing_photo_url",
+    "idx_image_urls",
 ]
+IDX_IMAGE_WARNING = "No zimg.paragon.ice.com IDX image URLs found; image list left empty."
 
 
 def load_json(path):
@@ -74,6 +78,11 @@ def save_json(path, data):
     path.parent.mkdir(exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def safe_slug(value):
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", str(value or "")).strip("-").lower()
+    return slug or "unknown-listing"
 
 
 def clean_mls_number(value):
@@ -351,6 +360,96 @@ def add_idx_warning(enriched, warning):
         enriched["idx_enrichment_warnings"].append(warning)
 
 
+def idx_image_extension(url):
+    suffix = Path(urlparse(url).path).suffix.lower().lstrip(".")
+    if suffix == "jpeg":
+        return "jpg"
+    if suffix in {"jpg", "png", "webp"}:
+        return suffix
+    return None
+
+
+def idx_image_folder(enriched):
+    image_folder = enriched.get("image_folder")
+    if image_folder and image_folder != MISSING:
+        return Path(image_folder)
+
+    slug_source = (
+        enriched.get("address")
+        or enriched.get("mls_number")
+        or enriched.get("source_pdf")
+        or "unknown-listing"
+    )
+    return Path("outputs/images") / safe_slug(slug_source)
+
+
+def clean_existing_listing_images(output_folder):
+    for pattern in ["idx_*.*", "page-*-image-*.*"]:
+        for path in output_folder.glob(pattern):
+            if path.is_file():
+                path.unlink()
+
+
+def write_idx_image_manifest(enriched, images):
+    output_folder = idx_image_folder(enriched)
+    output_folder.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "listing_url": enriched.get("listing_url") or MISSING,
+        "idx_url": enriched.get("idx_url") or MISSING,
+        "mls_number": enriched.get("mls_number") or MISSING,
+        "address": enriched.get("address") or MISSING,
+        "image_folder": str(output_folder),
+        "images": images,
+    }
+    with open(output_folder / "manifest.json", "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+    enriched["image_folder"] = str(output_folder)
+
+
+def download_idx_images(enriched, idx_data):
+    urls = idx_data.get("idx_image_urls") or []
+    enriched["idx_image_urls"] = urls
+    enriched["listing_photo_url"] = urls[0] if urls else MISSING
+
+    output_folder = idx_image_folder(enriched)
+    output_folder.mkdir(parents=True, exist_ok=True)
+    clean_existing_listing_images(output_folder)
+
+    if not urls:
+        add_idx_warning(enriched, IDX_IMAGE_WARNING)
+        write_idx_image_manifest(enriched, [])
+        print(f"IDX image warning: {IDX_IMAGE_WARNING}")
+        return
+
+    images = []
+    session = requests.Session()
+    for index, url in enumerate(urls, start=1):
+        extension = idx_image_extension(url)
+        if not extension:
+            continue
+
+        filename = f"idx_{index:02d}.{extension}"
+        output_path = output_folder / filename
+        response = session.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; redfin-property-extractor/1.0)"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+
+        images.append(
+            {
+                "filename": filename,
+                "path": str(output_path),
+                "source_url": url,
+            }
+        )
+
+    write_idx_image_manifest(enriched, images)
+
+
 def idx_printable_unavailable(idx_data):
     debug = idx_data.get("debug", {})
     errors = debug.get("errors", [])
@@ -561,6 +660,7 @@ def idx_candidate_values(idx_data):
             first_section_value(idx_data, ["Price Reduction Date"])
         ),
         "listing_photo_url": printable_value(idx_data.get("listing_photo_url")),
+        "idx_image_urls": idx_data.get("idx_image_urls") or None,
     }
 
 
@@ -608,6 +708,12 @@ def merge_idx_details(scored_property, idx_data, idx_url, mls_number):
         if field in {"baths", "listing_status"} or is_fillable_value(enriched.get(field)):
             enriched[field] = idx_value
             enriched["idx_enriched_fields"].append(field)
+
+    try:
+        download_idx_images(enriched, idx_data)
+    except requests.RequestException as exc:
+        add_idx_warning(enriched, f"IDX image download failed: {exc}")
+        write_idx_image_manifest(enriched, [])
 
     apply_basement_interpretation(enriched, idx_data)
     apply_fence_interpretation(enriched, idx_data)
