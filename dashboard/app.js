@@ -471,6 +471,19 @@ function currentPrice(property) {
   return hasDisplayValue(property.current_price) ? property.current_price : property.price;
 }
 
+function matchesPriceRange(price, range) {
+  if (range === "all") return true;
+  if (price === null) return false;
+  if (range === "below-250") return price < 250000;
+  if (range === "400-plus") return price >= 400000;
+
+  const match = String(range).match(/^(\d+)-(\d+)$/);
+  if (!match) return false;
+  const lower = Number(match[1]) * 1000;
+  const upper = Number(match[2]) * 1000;
+  return price >= lower && price < upper;
+}
+
 function priceDropAmount(property) {
   if (hasDisplayValue(property.price_reduction_amount)) return property.price_reduction_amount;
   const before = parseNumber(property.price_before_reduction);
@@ -1098,11 +1111,7 @@ function getFilteredProperties() {
       const matchesStatus = listingStatus === activeMarketState;
 
       const price = parseNumber(currentPrice(property));
-      const matchesPrice = priceFilter === "all"
-        || (priceFilter === "under-150" && price !== null && price < 150000)
-        || (priceFilter === "150-200" && price !== null && price >= 150000 && price < 200000)
-        || (priceFilter === "200-250" && price !== null && price >= 200000 && price < 250000)
-        || (priceFilter === "250-plus" && price !== null && price >= 250000);
+      const matchesPrice = matchesPriceRange(price, priceFilter);
 
       const dom = parseDomValue(property);
       const matchesDom = domFilter === "all"
